@@ -1,5 +1,7 @@
 export type MessageStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
 
+export type Quote = { id: string; text: string; mediaLabel?: string; fromMe: boolean }
+
 export type Message = {
   id: string
   chatId: string
@@ -7,6 +9,10 @@ export type Message = {
   text: string
   timestamp: number
   status: MessageStatus
+  mediaLabel?: string
+  deleted?: boolean
+  edited?: boolean
+  quote?: Quote
 }
 
 export type Chat = {

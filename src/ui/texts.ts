@@ -1,4 +1,5 @@
 import type { ApiErrorKind } from '../api/errors'
+import { MAX_MESSAGE_LENGTH } from '../core/limits'
 
 export const texts = {
   appTitle: 'MAX · GREEN-API',
@@ -8,6 +9,7 @@ export const texts = {
     idInstance: 'idInstance',
     apiToken: 'apiTokenInstance',
     apiUrl: 'apiUrl',
+    apiUrlHint: 'Хост из карточки инстанса в консоли, например https://1103.api.green-api.com',
     remember: 'Запомнить меня на этом устройстве',
     submit: 'Войти',
     where: 'Где взять данные',
@@ -21,6 +23,7 @@ export const texts = {
     empty: 'Чатов пока нет. Нажмите «+», чтобы написать по номеру',
     nothingFound: 'Ничего не найдено',
     logout: 'Выйти',
+    writeTo: (phone: string) => `Написать ${phone}`,
   },
   newChat: {
     title: 'Новый чат',
@@ -40,13 +43,32 @@ export const texts = {
     historyFailed: 'Не удалось загрузить историю',
     today: 'Сегодня',
     yesterday: 'Вчера',
-    tooLong: (n: number) => `Слишком длинное сообщение: ${n} из 4000`,
+    tooLong: (n: number) => `Слишком длинное сообщение: ${n} из ${MAX_MESSAGE_LENGTH}`,
+    you: 'Вы: ',
+    quoteFromMe: 'Вы',
+    deleted: 'Сообщение удалено',
+    edited: 'ред.',
   },
   banner: {
-    otherTab: 'Приём сообщений идёт в другой вкладке',
     notAuthorized: 'Инстанс не авторизован: отсканируйте QR-код в консоли GREEN-API',
     quota: 'Исчерпан лимит тарифа Developer: новые чаты недоступны',
     offline: 'Нет соединения, переподключаемся…',
+    openConsole: 'Открыть консоль',
+  },
+  status: {
+    pending: 'Отправляется',
+    sent: 'Отправлено',
+    delivered: 'Доставлено',
+    read: 'Прочитано',
+    failed: 'Не отправлено',
+  },
+  nav: {
+    label: 'Навигация',
+  },
+  otherTab: {
+    title: 'Приложение открыто в другой вкладке',
+    hint: 'Приложение работает в одной вкладке. Если продолжить здесь, в другой вкладке оно остановится',
+    takeOver: 'Работать здесь',
   },
   fatal: { title: 'Что-то пошло не так', reload: 'Перезагрузить' },
 }

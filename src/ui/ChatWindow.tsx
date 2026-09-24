@@ -31,7 +31,9 @@ export function ChatWindow() {
             <ChatAvatar chatId={chatId} title={chat.title} size={40} />
             <div className={styles.headerText}>
               <span className={styles.headerTitle}>{chat.title}</span>
-              <span className={styles.headerSub}>{formatPhone(chat.phone)}</span>
+              {chat.title !== formatPhone(chat.phone) && (
+                <span className={styles.headerSub}>{formatPhone(chat.phone)}</span>
+              )}
             </div>
           </header>
           {historyError && (
@@ -39,8 +41,8 @@ export function ChatWindow() {
               {texts.chat.historyFailed} · {texts.chat.retry}
             </button>
           )}
-          <MessageList key={chatId} chatId={chatId} />
-          <Composer onSend={(text) => void actions.sendMessage(chatId, text)} />
+          <MessageList key={`messages-${chatId}`} chatId={chatId} />
+          <Composer key={`composer-${chatId}`} onSend={(text) => void actions.sendMessage(chatId, text)} />
         </>
       )}
     </section>

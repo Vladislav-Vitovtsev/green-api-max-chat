@@ -8,7 +8,7 @@ import { ErrorBoundary } from './ui/ErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MaxUI colorScheme="dark" platform="ios">
+    <MaxUI className="app-root" colorScheme="dark" platform="ios">
       <ErrorBoundary>
         <App />
       </ErrorBoundary>

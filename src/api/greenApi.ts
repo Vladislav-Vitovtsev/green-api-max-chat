@@ -1,3 +1,4 @@
+import { anySignal } from './abort'
 import { ApiError, errorFromResponse, isAbortError } from './errors'
 import { maskSecret } from './mask'
 import type { Credentials, RawHistoryItem, RawNotification } from './types'
@@ -17,6 +18,14 @@ type CallInit = {
   query?: string
   suffix?: string
   signal?: AbortSignal
+}
+
+// Внешний signal (session.signal из actions.ts) обрывает запрос при logout/relogin, но сам по
+// себе не защищает от зависшего соединения — если сервер не отвечает и не рвёт TCP, fetch без
+// собственного таймаута может висеть неограниченно долго. Комбинируем оба через anySignal.
+function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const timeout = AbortSignal.timeout(ms)
+  return signal ? anySignal([signal, timeout]) : timeout
 }
 
 export function createGreenApi(creds: Credentials, fetchImpl: typeof fetch = (...a) => fetch(...a)): GreenApi {
@@ -59,7 +68,7 @@ export function createGreenApi(creds: Credentials, fetchImpl: typeof fetch = (..
       const r = await call<{ idMessage: string }>('sendMessage', {
         httpMethod: 'POST',
         body: { chatId, message },
-        signal,
+        signal: withTimeout(signal, 30_000),
       })
       if (!r?.idMessage) throw new ApiError('unknown', 'Сервер не вернул idMessage')
       return r
@@ -69,7 +78,7 @@ export function createGreenApi(creds: Credentials, fetchImpl: typeof fetch = (..
       const r = await call<RawHistoryItem[]>('getChatHistory', {
         httpMethod: 'POST',
         body: { chatId, count },
-        signal,
+        signal: withTimeout(signal, 30_000),
       })
       return Array.isArray(r) ? r : []
     },
@@ -89,11 +98,9 @@ export function createGreenApi(creds: Credentials, fetchImpl: typeof fetch = (..
     },
 
     async receiveNotification(timeoutSec, signal) {
-      const timeout = AbortSignal.timeout((timeoutSec + 10) * 1000)
-      const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
       return call<RawNotification>('receiveNotification', {
         query: `?receiveTimeout=${timeoutSec}`,
-        signal: combined,
+        signal: withTimeout(signal, (timeoutSec + 10) * 1000),
       })
     },
 

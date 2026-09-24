@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useStore } from 'zustand'
 import { actions } from '../store/actions'
 import { selectOrder } from '../store/selectors'
@@ -12,7 +12,9 @@ const EMPTY: string[] = []
 
 export function MessageList({ chatId }: { chatId: string }) {
   const order = useStore(appStore, selectOrder(chatId)) ?? EMPTY
-  const byId = appStore.getState().messagesById
+  // Подписка, а не getState() в рендере: byId участвует в разбивке по дням (капсулы дат) —
+  // без подписки React не перерисует список, если messagesById поменялся без изменения order.
+  const byId = useStore(appStore, (s) => s.messagesById)
   const ref = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const lastCount = useRef(0)
@@ -32,6 +34,12 @@ export function MessageList({ chatId }: { chatId: string }) {
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
+  // Стабильная ссылка на всё время жизни компонента: MessageBubble — React.memo, и новый
+  // onRetry на каждый рендер MessageList (а он перерендеривается при правке ЛЮБОГО сообщения
+  // в сторе, см. подписку на byId выше) свёл бы memo на нет — все бабблы перерисовывались бы
+  // заново из-за смены пропа, даже если их собственные данные не изменились.
+  const onRetry = useCallback((mid: string) => void actions.retryMessage(mid), [])
+
   if (order.length === 0) return <div className={styles.emptyMessages}>{texts.chat.noMessages}</div>
 
   return (
@@ -41,7 +49,7 @@ export function MessageList({ chatId }: { chatId: string }) {
         const prevId = order[i - 1]
         const prevDay = prevId ? formatDay(byId[prevId]?.timestamp ?? 0) : ''
         const capsule = day !== prevDay ? <div key={`d-${id}`} className={styles.capsule}><span>{day}</span></div> : null
-        return [capsule, <MessageBubble key={id} id={id} onRetry={(mid) => void actions.retryMessage(mid)} />]
+        return [capsule, <MessageBubble key={id} id={id} onRetry={onRetry} />]
       })}
     </div>
   )

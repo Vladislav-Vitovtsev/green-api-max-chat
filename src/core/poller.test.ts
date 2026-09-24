@@ -69,15 +69,39 @@ describe('poller', () => {
     expect(t.acks).toEqual([7])
   })
 
-  it('подтверждает, даже если обработчик события упал', async () => {
+  it('подтверждает, даже если обработчик события упал; в лог идёт категория ошибки, а не сырой текст', async () => {
     const t = setup([n(3, fixtures.incomingText)], {
       onEvent: () => {
-        throw new Error('boom')
+        throw new Error('текст сообщения, который не должен попасть в лог')
       },
     })
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await t.poller.run(t.stop.signal)
     expect(t.acks).toEqual([3])
+    expect(warn).toHaveBeenCalledWith('[poller] обработчик уведомления упал', 'unknown')
+  })
+
+  it('receive резолвится успешно ровно в момент stop.abort() — уведомление не обрабатывается и не ack\'ается', async () => {
+    const stop = new AbortController()
+    const events: DomainEvent[] = []
+    const acks: number[] = []
+    const poller = createPoller({
+      // Имитируем гонку: стоп происходит, пока receive «в полёте», но сам receive успевает
+      // зарезолвиться с реальным уведомлением, а не бросить AbortError.
+      receive: async () => {
+        stop.abort()
+        return n(9, fixtures.incomingText)
+      },
+      ack: async (id) => {
+        acks.push(id)
+      },
+      onEvent: (ev) => events.push(ev),
+      onStatus: () => {},
+      onFatal: () => {},
+    })
+    await poller.run(stop.signal)
+    expect(events).toEqual([])
+    expect(acks).toEqual([])
   })
 
   it('сеть и 429 → бэкофф с ростом, затем сброс после успеха', async () => {

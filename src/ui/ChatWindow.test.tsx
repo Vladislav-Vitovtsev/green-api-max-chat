@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { appStore, initialState } from '../store/store'
 import { ChatWindow } from './ChatWindow'
 import styles from './ChatWindow.module.css'
+import { texts } from './texts'
 
 beforeEach(() => appStore.setState({ ...initialState }, true))
 
@@ -38,4 +40,28 @@ it('переключение чата открывает список внизу
 
   const bList = listEl()
   expect(bList.scrollTop).toBe(bList.scrollHeight)
+})
+
+it('черновик в композере не переносится при переключении чата', async () => {
+  const user = userEvent.setup()
+  appStore.setState({
+    chats: {
+      a: { chatId: 'a', phone: '79991111111', title: 'A', historyLoaded: true },
+      b: { chatId: 'b', phone: '79992222222', title: 'B', historyLoaded: true },
+    },
+    chatOrder: ['a', 'b'],
+    activeChatId: 'a',
+  })
+
+  render(<ChatWindow />)
+  const textarea = () => screen.getByPlaceholderText(texts.chat.placeholder) as HTMLTextAreaElement
+
+  await user.type(textarea(), 'черновик A')
+  expect(textarea().value).toBe('черновик A')
+
+  act(() => {
+    appStore.setState({ activeChatId: 'b' })
+  })
+
+  expect(textarea().value).toBe('')
 })

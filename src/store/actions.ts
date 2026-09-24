@@ -1,17 +1,19 @@
 import { ApiError, isAbortError, toApiError, type ApiErrorKind } from '../api/errors'
 import { createGreenApi, type GreenApi } from '../api/greenApi'
 import type { Credentials } from '../api/types'
-import { mapHistory } from '../core/history'
-import { runAsLeader, type LocksLike } from '../core/leader'
-import { confirmLocal, markFailed, removeMessage, upsertMessages } from '../core/messages'
+import { mapHistory, maxRawHistoryTimestamp } from '../core/history'
+import { MAX_MESSAGE_LENGTH } from '../core/limits'
+import {
+  applyStatus, confirmLocal, keepInFlight, markFailed, reconcileChatWithHistory, removeMessage, upsertMessages,
+} from '../core/messages'
 import type { Message } from '../core/model'
 import { formatPhone, normalizePhone } from '../core/phone'
 import { createPoller } from '../core/poller'
+import { acquireActiveTab, type ActiveTab, type LocksLike } from '../core/tabLock'
 import { clearCredentials, loadCredentials, saveCredentials } from './credentials'
 import { reduceEvent, touchChat } from './reduce'
 import { appStore, initialState, type AppState, type AppStore } from './store'
 
-export const MAX_MESSAGE_LENGTH = 4000
 export const HISTORY_COUNT = 100
 
 export type CreateChatResult =
@@ -24,6 +26,7 @@ type Deps = {
   store: AppStore
   makeApi?: (c: Credentials) => GreenApi
   locks?: LocksLike | null
+  lockWaitMs?: number
   uuid?: () => string
   now?: () => number
   creds?: {
@@ -43,10 +46,7 @@ export function createActions(deps: Deps) {
   let api: GreenApi | null = null
   let session: AbortController | null = null
   let wake: () => void = () => {}
-  // R17: сессии опроса не должны пересекаться — новый runAsLeader стартует только
-  // после того, как устоится (settle) предыдущий, иначе вкладка на миг сама себе
-  // становится follower'ом (вспышка баннера otherTab) при релогине/HMR.
-  let leaderRun: Promise<void> = Promise.resolve()
+  let activeTab: ActiveTab | null = null
   // Поколение сессии: растёт на каждый старт/останов опроса. Асинхронные операции
   // (createChat/reloadHistory/sendMessage) захватывают его перед await и после
   // await молча ничего не делают, если оно уже сменилось (logout/stop/релогин).
@@ -67,7 +67,7 @@ export function createActions(deps: Deps) {
     }
   }
 
-  function startPolling(creds: Credentials) {
+  function startPolling() {
     generation++
     session?.abort()
     const controller = new AbortController()
@@ -76,50 +76,52 @@ export function createActions(deps: Deps) {
     const poller = createPoller({
       receive: (signal) => client.receiveNotification(20, signal),
       ack: (id, signal) => client.deleteNotification(id, signal),
-      onEvent: (ev) => set((s) => reduceEvent(s, ev)),
+      // Пустой патч (событие из чужого чата) не проксируем в setState — иначе персист
+      // молотит по каждому чужому уведомлению без единого содержательного изменения.
+      onEvent: (ev) => {
+        const patch = reduceEvent(store.getState(), ev)
+        if (Object.keys(patch).length > 0) set(patch)
+      },
       onStatus: (c) =>
         set((s) => ({
           connection: c,
-          banner: c === 'offline' ? 'offline' : s.banner === 'offline' || s.banner === 'otherTab' ? null : s.banner,
+          banner: c === 'offline' ? 'offline' : s.banner === 'offline' ? null : s.banner,
         })),
       onFatal: (err) => logout(err.kind),
     })
     wake = () => poller.wake()
-    const prev = leaderRun
-    leaderRun = prev.then(() =>
-      runAsLeader(`greenapi-poll-${creds.idInstance}`, {
-        signal: controller.signal,
-        locks: deps.locks,
-        onFollower: () => set({ connection: 'follower', banner: 'otherTab' }),
-        onLeader: async (signal) => {
-          if (signal.aborted) return
-          set((s) => ({ connection: 'polling', banner: s.banner === 'otherTab' ? null : s.banner }))
-          await poller.run(signal)
-        },
-      }).catch((e: unknown) => console.error('[poll]', toApiError(e).kind)),
-    )
+    // Опрашивает только активная вкладка (см. start), так что второго поллера нет.
+    set({ connection: 'polling' })
+    poller.run(controller.signal).catch((e: unknown) => {
+      if (!isAbortError(e)) console.error('[poll]', toApiError(e).kind)
+    })
   }
 
   async function login(creds: Credentials, remember: boolean): Promise<void> {
     const client = makeApi(creds)
+    const gen = generation
     const state = await client.getStateInstance()
+    // За время ожидания лок могли перехватить (onLost → stop и tab blocked) или сессию сменить:
+    // такой вкладке нельзя ни сохранять креды, ни запускать опрос.
+    if (gen !== generation || store.getState().tab === 'blocked') return
     if (state !== 'authorized') throw new ApiError('notAuthorized', state)
     api = client
     ensureOwner(creds.idInstance)
     credStore.save(creds, remember)
     set({ credentials: creds, authError: null })
-    startPolling(creds)
+    startPolling()
   }
 
+  // activeChatId не персистится (см. Persisted в store.ts) — сразу после restore() он
+  // всегда null, дочитывать историю здесь для «активного чата» было мёртвым кодом:
+  // openChat/reloadHistory вызываются, когда пользователь реально откроет чат в UI.
   function restore(): void {
     const saved = credStore.load()
     if (!saved) return
     api = makeApi(saved.creds)
     ensureOwner(saved.creds.idInstance)
     set({ credentials: saved.creds })
-    startPolling(saved.creds)
-    const active = store.getState().activeChatId
-    if (active) void reloadHistory(active)
+    startPolling()
   }
 
   // R6: обрывает текущую сессию опроса, не трогая креды и данные — используется
@@ -138,9 +140,8 @@ export function createActions(deps: Deps) {
     api = null
     wake = () => {}
     credStore.clear()
-    const persisted = store as AppStore & { persist?: { clearStorage(): void } }
-    persisted.persist?.clearStorage()
-    store.setState({ ...initialState, authError: reason ?? null }, true)
+    store.persist.clearStorage()
+    store.setState({ ...initialState, tab: store.getState().tab, authError: reason ?? null }, true)
   }
 
   async function reloadHistory(chatId: string): Promise<void> {
@@ -148,19 +149,55 @@ export function createActions(deps: Deps) {
     const client = api
     const gen = generation
     const signal = session?.signal
+    // Снимок id этого чата на момент старта запроса: пока getChatHistory висит в
+    // await, поллер может дописать в чат свежее входящее (onEvent → reduceEvent → set)
+    // — то, чего ещё не было, когда сервер считал ответ истории. Такое сообщение не
+    // «протухшее», а просто новее самого запроса, и reconcile не должен его удалять,
+    // даже если оно не local/pending/failed и попадает в окно истории по времени.
+    const knownIds = new Set(store.getState().orderByChat[chatId] ?? [])
     try {
-      const items = mapHistory(await client.getChatHistory(chatId, HISTORY_COUNT, signal))
+      const raw = await client.getChatHistory(chatId, HISTORY_COUNT, signal)
+      const items = mapHistory(raw, chatId)
+      // Маркеры deletedMessage/editedMessage не попадают в items (см. mapHistory), но
+      // подтверждают, до какого момента сервер учёл события в этом чате — см. reconcile ниже.
+      const rawMaxTs = maxRawHistoryTimestamp(raw)
       if (gen !== generation) return
       set((s) => {
-        const merged = upsertMessages(s, items)
+        const keep = (m: Message) => keepInFlight(m) || !knownIds.has(m.id)
+        let merged = reconcileChatWithHistory(s, chatId, items, keep, rawMaxTs)
         const chat = s.chats[chatId]
         if (!chat) return {}
         const last = items[items.length - 1]
+        // reconcileChatWithHistory могла убрать протухшие id этого чата — сносим и их
+        // буфер статуса в pendingStatus, иначе он рос бы вхолостую навсегда.
+        const prevOrder = s.orderByChat[chatId] ?? []
+        const nextIds = new Set(merged.orderByChat[chatId] ?? prevOrder)
+        let pendingStatus = s.pendingStatus
+        for (const id of prevOrder) {
+          if (!nextIds.has(id) && id in pendingStatus) {
+            if (pendingStatus === s.pendingStatus) pendingStatus = { ...s.pendingStatus }
+            delete pendingStatus[id]
+          }
+        }
+        // Обратный случай: статус пришёл по опросу раньше, чем сообщение вообще появилось
+        // в сторе, и осел в pendingStatus (см. reduce.ts). Если загруженная история теперь
+        // принесла это же сообщение, буфер для него так и не применится сам собой —
+        // reduceEvent консьюмит pendingStatus только на живом 'message'-событии, а не на
+        // reloadHistory. Применяем и чистим запись здесь же, иначе сообщение навсегда
+        // останется со статусом из истории, а не с уже известным более свежим.
+        for (const item of items) {
+          const buffered = pendingStatus[item.id]
+          if (!buffered) continue
+          merged = applyStatus(merged, item.id, buffered) ?? merged
+          if (pendingStatus === s.pendingStatus) pendingStatus = { ...s.pendingStatus }
+          delete pendingStatus[item.id]
+        }
         const base = { ...s, ...merged, chats: { ...s.chats, [chatId]: { ...chat, historyLoaded: true } } }
         return {
           ...merged,
           ...(last ? touchChat(base, chatId, last) : { chats: base.chats }),
           historyError: { ...s.historyError, [chatId]: false },
+          pendingStatus,
         }
       })
     } catch (e) {
@@ -231,12 +268,53 @@ export function createActions(deps: Deps) {
 
   async function retryMessage(id: string): Promise<void> {
     const m = store.getState().messagesById[id]
-    if (!m || m.status !== 'failed') return
+    // «Повторить» имеет смысл только для собственного сообщения, которое так и не долетело
+    // до сервера (id ещё local-*, confirmLocal не переименовал его). Уже подтверждённое
+    // сообщение (реальный idMessage) с последующим статусом failed от сервера — это
+    // сообщение, которое сервер получил и потом не смог доставить: удалять и слать заново
+    // нельзя, это создаст дубликат. Пустой текст тоже не ретраим — sendMessage всё равно
+    // тихо откажется его отправлять, а сообщение к этому моменту было бы уже удалено.
+    if (!m || m.status !== 'failed' || !id.startsWith('local-') || !m.text.trim()) return
     set((s) => removeMessage(s, id))
     await sendMessage(m.chatId, m.text)
   }
 
+  // Активная вкладка забирает данные из storage (их могла записать вкладка, у которой
+  // лок перехватили) и только потом начинает писать сама.
+  async function activate(): Promise<void> {
+    const gen = generation
+    store.setState({ ...initialState }, true)
+    await store.persist.rehydrate()
+    // Лок успели перехватить, пока читали storage (onLost зовёт stop и меняет поколение).
+    if (gen !== generation) return
+    store.setPersistWritable(true)
+    set({ tab: 'active' })
+    restore()
+  }
+
+  // Старт приложения: restore/опрос и запись персиста только в активной вкладке (core/tabLock).
+  function start(): void {
+    if (activeTab) {
+      // Повторный вызов из той же вкладки (StrictMode, HMR после stop()): лок уже запрошен.
+      if (store.getState().tab === 'active' && !session) restore()
+      return
+    }
+    activeTab = acquireActiveTab({
+      locks: deps.locks,
+      waitMs: deps.lockWaitMs,
+      onActive: () => void activate(),
+      onBlocked: () => set({ tab: 'blocked' }),
+      onLost: () => {
+        store.setPersistWritable(false)
+        stop()
+        set({ tab: 'blocked' })
+      },
+    })
+  }
+
   return {
+    start,
+    takeOver: (): Promise<void> => activeTab?.takeOver() ?? Promise.resolve(),
     login,
     restore,
     logout,

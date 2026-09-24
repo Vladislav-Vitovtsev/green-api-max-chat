@@ -18,9 +18,22 @@ describe('parseNotification', () => {
     expect(ev?.type === 'message' && ev.message.text).toBe('Ссылка https://x.ru')
   })
 
-  it('картинка → заглушка', () => {
+  it('картинка без подписи → метка медиа, текст пустой', () => {
     const ev = parseNotification(fixtures.incomingImage)
-    expect(ev?.type === 'message' && ev.message.text).toBe('[изображение]')
+    expect(ev?.type === 'message' && ev.message.mediaLabel).toBe('📷 Фото')
+    expect(ev?.type === 'message' && ev.message.text).toBe('')
+  })
+
+  it('картинка с подписью → метка медиа отдельно от текста подписи', () => {
+    const ev = parseNotification(fixtures.incomingImageCaption)
+    expect(ev?.type === 'message' && ev.message.mediaLabel).toBe('📷 Фото')
+    expect(ev?.type === 'message' && ev.message.text).toBe('Отпуск')
+  })
+
+  it('стикер с подписью → метка «Стикер», подпись отдельным текстом', () => {
+    const ev = parseNotification(fixtures.incomingStickerCaption)
+    expect(ev?.type === 'message' && ev.message.mediaLabel).toBe('Стикер')
+    expect(ev?.type === 'message' && ev.message.text).toBe('привет!')
   })
 
   it('исходящее из API и с телефона → direction out, status sent', () => {
@@ -34,6 +47,11 @@ describe('parseNotification', () => {
     }
   })
 
+  it('исходящее без chatName не подставляет senderName (это владелец инстанса, не собеседник)', () => {
+    const ev = parseNotification(fixtures.outgoingNoChatName)
+    expect(ev?.type === 'message' && ev.chatName).toBeUndefined()
+  })
+
   it('статус доставки', () => {
     expect(parseNotification(fixtures.statusDelivered)).toEqual({
       type: 'status', chatId: '10000001', idMessage: 'out-1', status: 'delivered',
@@ -43,6 +61,26 @@ describe('parseNotification', () => {
   it('смена состояния инстанса и квота', () => {
     expect(parseNotification(fixtures.stateChanged)).toEqual({ type: 'instanceState', state: 'notAuthorized' })
     expect(parseNotification(fixtures.quota)).toEqual({ type: 'quota' })
+  })
+
+  it('quotedMessage внутри messageData → цитата, fromMe по совпадению участника с chatId', () => {
+    const ev = parseNotification(fixtures.incomingTextWithQuote)
+    expect(ev?.type === 'message' && ev.message.quote).toEqual({ id: 'q1', text: 'Работает?', mediaLabel: undefined, fromMe: false })
+  })
+
+  it('quotedMessage, вложенный в extendedTextMessageData, тоже распознаётся; медиа-тип даёт mediaLabel', () => {
+    const ev = parseNotification(fixtures.incomingExtendedWithNestedQuote)
+    expect(ev?.type === 'message' && ev.message.quote).toEqual({ id: 'q2', text: 'Фото места', mediaLabel: '📷 Фото', fromMe: true })
+  })
+
+  it('без quotedMessage → quote не выставляется', () => {
+    const ev = parseNotification(fixtures.incomingText)
+    expect(ev?.type === 'message' && ev.message.quote).toBeUndefined()
+  })
+
+  it('deletedMessage/editedMessage внутри webhook о сообщении — служебный маркер, не сообщение', () => {
+    expect(parseNotification(fixtures.incomingDeletedMarker)).toBeNull()
+    expect(parseNotification(fixtures.incomingEditedMarker)).toBeNull()
   })
 
   it('мусор и неизвестные типы → null, без исключений', () => {

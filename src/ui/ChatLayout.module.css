@@ -2,11 +2,13 @@
 .rail { display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 12px 4px 16px; background: var(--bg-primary); border-right: 1px solid rgb(255 255 255 / 0.06); }
 .railItem { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 68px; padding: 8px 0; border-radius: 12px; background: none; border: 0; color: var(--text-tertiary); cursor: pointer; font: inherit; }
 .railItem small { font-size: 11px; line-height: 14px; }
-.railActive { color: var(--text-primary); }
+.railActive { color: var(--text-primary); cursor: default; }
 
 @media (max-width: 768px) {
   .layout { grid-template-columns: 1fr; }
   .rail { display: none; }
+  /* Дублируется явным оверрайдом .list { width: 100% } в ChatList.module.css — там он
+     родной для аside, тут работает по совпадению (выше специфичность .layout > aside). */
   .layout > aside { width: 100%; }
   .layout > section { display: none; }
   .chatOpen > aside { display: none; }

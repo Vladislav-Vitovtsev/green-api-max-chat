@@ -1,6 +1,7 @@
 import type { Message } from './model'
 import {
-  applyStatus, confirmLocal, markFailed, nextStatus, removeMessage, upsertMessages, type MessagesState,
+  applyStatus, confirmLocal, keepInFlight, markFailed, nextStatus, reconcileChatWithHistory, removeMessage,
+  upsertMessages, type MessagesState,
 } from './messages'
 
 const empty: MessagesState = { messagesById: {}, orderByChat: {} }
@@ -41,6 +42,117 @@ describe('upsertMessages', () => {
     const s1 = upsertMessages(empty, [msg('a', 100)])
     const s2 = upsertMessages(s1, [msg('a', 100)])
     expect(s2.orderByChat.c).toBe(s1.orderByChat.c)
+  })
+
+  it('дедуп по id: свежий непустой текст заменяет старый плейсхолдер', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: '[изображение]' })])
+    s = upsertMessages(s, [msg('a', 100, { text: '📷 Фото' })])
+    expect(s.messagesById.a!.text).toBe('📷 Фото')
+  })
+
+  it('дедуп по id: пустой входящий текст не затирает существующий', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: '📷 Фото' })])
+    s = upsertMessages(s, [msg('a', 100, { text: '' })])
+    expect(s.messagesById.a!.text).toBe('📷 Фото')
+  })
+
+  it('дедуп по id: берёт входящий mediaLabel, когда он присутствует', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'Момент', mediaLabel: '🎥 Видео' })])
+    s = upsertMessages(s, [msg('a', 100, { text: 'Момент', mediaLabel: '📷 Фото' })])
+    expect(s.messagesById.a!.mediaLabel).toBe('📷 Фото')
+  })
+
+  it('дедуп по id: без нового mediaLabel старый сохраняется', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'a', mediaLabel: '🎥 Видео', status: 'sent' })])
+    s = upsertMessages(s, [msg('a', 100, { text: 'a', status: 'delivered' })])
+    expect(s.messagesById.a!.mediaLabel).toBe('🎥 Видео')
+  })
+
+  it('дедуп по id: повторная загрузка истории с isDeleted затирает текст пустой строкой', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'привет', direction: 'in' })])
+    s = upsertMessages(s, [msg('a', 100, { text: '', direction: 'in', deleted: true })])
+    expect(s.messagesById.a!.text).toBe('')
+    expect(s.messagesById.a!.deleted).toBe(true)
+  })
+
+  it('дедуп по id: deleted монотонен — повторная загрузка без флага не воскрешает сообщение', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'привет', direction: 'in', deleted: true })])
+    s = upsertMessages(s, [msg('a', 100, { text: 'привет', direction: 'in', deleted: false })])
+    expect(s.messagesById.a!.deleted).toBe(true)
+    expect(s.messagesById.a!.text).toBe('')
+  })
+
+  it('дедуп по id: edited монотонен — повторная загрузка без флага не снимает пометку «ред.»', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'привет', direction: 'in', edited: true })])
+    s = upsertMessages(s, [msg('a', 100, { text: 'привет', direction: 'in', edited: false })])
+    expect(s.messagesById.a!.edited).toBe(true)
+  })
+
+  it('дедуп по id: у удалённого медиасообщения после мержа нет mediaLabel', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: 'Момент', direction: 'in', mediaLabel: '🎥 Видео' })])
+    s = upsertMessages(s, [msg('a', 100, { text: '', direction: 'in', deleted: true })])
+    expect(s.messagesById.a!.mediaLabel).toBeUndefined()
+  })
+
+  it('дедуп по id: входящая копия с mediaLabel авторитетна по тексту даже при пустой строке — старая подпись-дубликат не переживает', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: '📷 Фото', direction: 'in' })])
+    s = upsertMessages(s, [msg('a', 100, { text: '', direction: 'in', mediaLabel: '📷 Фото' })])
+    expect(s.messagesById.a!.text).toBe('')
+    expect(s.messagesById.a!.mediaLabel).toBe('📷 Фото')
+  })
+
+  it('дедуп по id: входящая копия с mediaLabel и непустым текстом — подпись обновляется', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { text: '📷 Фото', direction: 'in' })])
+    s = upsertMessages(s, [msg('a', 100, { text: 'Отпуск', direction: 'in', mediaLabel: '📷 Фото' })])
+    expect(s.messagesById.a!.text).toBe('Отпуск')
+  })
+
+  it('дедуп по id: quote сохраняется, если повторная копия его не несёт', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { quote: { id: 'q1', text: 'Работает?', fromMe: false } })])
+    s = upsertMessages(s, [msg('a', 100, {})])
+    expect(s.messagesById.a!.quote).toEqual({ id: 'q1', text: 'Работает?', fromMe: false })
+  })
+
+  it('дедуп по id: новый quote во входящей копии заменяет старый', () => {
+    let s = upsertMessages(empty, [msg('a', 100, { quote: { id: 'q1', text: 'старая', fromMe: false } })])
+    s = upsertMessages(s, [msg('a', 100, { quote: { id: 'q2', text: 'новая', fromMe: true } })])
+    expect(s.messagesById.a!.quote).toEqual({ id: 'q2', text: 'новая', fromMe: true })
+  })
+
+  it('дедуп по id: своё исходящее — серверный timestamp репозиционирует сообщение в orderByChat', () => {
+    let s = upsertMessages(empty, [msg('out-1', 100), msg('in-1', 150, { direction: 'in' })])
+    expect(order(s)).toEqual(['out-1', 'in-1'])
+    // Эхо с сервера пришло с более поздним timestamp, чем клиентские часы в момент отправки.
+    s = upsertMessages(s, [msg('out-1', 200, { status: 'delivered' })])
+    expect(order(s)).toEqual(['in-1', 'out-1'])
+    expect(s.messagesById['out-1']!.timestamp).toBe(200)
+  })
+
+  it('дедуп по id: своё отредактированное сообщение не репозиционируется по timestamp правки', () => {
+    let s = upsertMessages(empty, [msg('out-1', 100), msg('in-1', 150, { direction: 'in' })])
+    expect(order(s)).toEqual(['out-1', 'in-1'])
+    // Копия с сервера несёт timestamp момента правки (500), а не исходной отправки (100).
+    s = upsertMessages(s, [msg('out-1', 500, { edited: true, text: 'исправлено' })])
+    expect(order(s)).toEqual(['out-1', 'in-1'])
+    expect(s.messagesById['out-1']!.timestamp).toBe(100)
+    expect(s.messagesById['out-1']!.edited).toBe(true)
+    expect(s.messagesById['out-1']!.text).toBe('исправлено')
+  })
+
+  it('дедуп по id: входящее — повторная копия с другим timestamp позицию не меняет', () => {
+    let s = upsertMessages(empty, [msg('in-1', 100, { direction: 'in' }), msg('a', 150)])
+    expect(order(s)).toEqual(['in-1', 'a'])
+    s = upsertMessages(s, [msg('in-1', 500, { direction: 'in' })])
+    expect(order(s)).toEqual(['in-1', 'a'])
+    expect(s.messagesById['in-1']!.timestamp).toBe(100)
+  })
+
+  it('дедуп по id: повторный апсерт с идентичным по содержимому, но новым по ссылке quote — та же ссылка стейта', () => {
+    const s1 = upsertMessages(empty, [msg('a', 100, { quote: { id: 'q1', text: 'Работает?', fromMe: false } })])
+    // Новый объект той же цитаты (как после повторного парсинга quoteContent) — не иначе.
+    const s2 = upsertMessages(s1, [msg('a', 100, { quote: { id: 'q1', text: 'Работает?', fromMe: false } })])
+    expect(s2).toBe(s1)
+    expect(s2.messagesById.a).toBe(s1.messagesById.a)
   })
 })
 
@@ -110,5 +222,75 @@ describe('markFailed и removeMessage', () => {
     const s = removeMessage(upsertMessages(empty, [msg('a', 1), msg('b', 2)]), 'a')
     expect(order(s)).toEqual(['b'])
     expect(s.messagesById.a).toBeUndefined()
+  })
+})
+
+describe('reconcileChatWithHistory', () => {
+  it('устаревший id внутри окна истории удаляется', () => {
+    // Окно истории — [fromTs; toTs] по её сообщениям: 'stale' (150) лежит строго между
+    // ними (100 и 200), поэтому попадает под удаление, раз его нет в свежей истории.
+    let s = upsertMessages(empty, [msg('stale', 150, { text: '' }), msg('a', 100)])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 100), msg('b', 200)], keepInFlight)
+    expect(order(s)).toEqual(['a', 'b'])
+    expect(s.messagesById.stale).toBeUndefined()
+  })
+
+  it('сообщение старше окна истории сохраняется', () => {
+    let s = upsertMessages(empty, [msg('old', 50), msg('a', 200)])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 200)], keepInFlight)
+    expect(order(s)).toEqual(['old', 'a'])
+    expect(s.messagesById.old).toBeDefined()
+  })
+
+  it('подтверждённое своё сообщение новее окна истории сохраняется (ещё не долетело до getChatHistory)', () => {
+    let s = upsertMessages(empty, [msg('a', 100), msg('fresh', 500, { status: 'sent' })])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 100)], keepInFlight)
+    expect(order(s)).toEqual(['a', 'fresh'])
+    expect(s.messagesById.fresh).toBeDefined()
+  })
+
+  it('локальное pending-сообщение внутри окна истории сохраняется', () => {
+    let s = upsertMessages(empty, [msg('local-1', 250, { status: 'pending' })])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 200)], keepInFlight)
+    expect(order(s)).toEqual(['a', 'local-1'])
+    expect(s.messagesById['local-1']).toBeDefined()
+  })
+
+  it('пустая история не меняет стейт (та же ссылка)', () => {
+    const s = upsertMessages(empty, [msg('a', 100)])
+    expect(reconcileChatWithHistory(s, 'c', [], keepInFlight)).toBe(s)
+  })
+
+  it('массив порядка чата обновляется под новую историю', () => {
+    let s = upsertMessages(empty, [msg('stale', 150, { text: '' }), msg('a', 100)])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 100), msg('b', 300)], keepInFlight)
+    expect(order(s)).toEqual(['a', 'b'])
+  })
+
+  it('чужой чат не трогает, устаревшее сообщение другого чата остаётся', () => {
+    let s = upsertMessages(empty, [{ ...msg('other', 100), chatId: 'other-chat' }])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 200)], keepInFlight)
+    expect(s.messagesById.other).toBeDefined()
+  })
+
+  it('ничего не меняется — возвращается та же ссылка стейта', () => {
+    const s = upsertMessages(empty, [msg('a', 200)])
+    expect(reconcileChatWithHistory(s, 'c', [msg('a', 200)], keepInFlight)).toBe(s)
+  })
+
+  it('rawMaxTs расширяет верхнюю границу окна — ловит бабл от маркера, отфильтрованного mapHistory', () => {
+    // items (после mapHistory) содержат только 'a' (100) — toTs по ним был бы 100. Но сырой
+    // ответ нёс ещё и маркер (deletedMessage/editedMessage) с timestamp 300, который в items
+    // не попал, зато подтверждает, что сервер учёл события вплоть до 300.
+    let s = upsertMessages(empty, [msg('a', 100), msg('marker-bubble', 200, { text: '' })])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 100)], keepInFlight, 300)
+    expect(s.messagesById['marker-bubble']).toBeUndefined()
+    expect(order(s)).toEqual(['a'])
+  })
+
+  it('без rawMaxTs то же сообщение (новее toTs по items) не считается протухшим', () => {
+    let s = upsertMessages(empty, [msg('a', 100), msg('marker-bubble', 200, { text: '' })])
+    s = reconcileChatWithHistory(s, 'c', [msg('a', 100)], keepInFlight)
+    expect(s.messagesById['marker-bubble']).toBeDefined()
   })
 })

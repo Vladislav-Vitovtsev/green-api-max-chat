@@ -27,11 +27,15 @@ export function loadCredentials(): { creds: Credentials; remember: boolean } | n
 }
 
 export function saveCredentials(c: Credentials, remember: boolean): void {
-  clearCredentials()
-  safe(() => {
-    const target = remember ? localStorage : sessionStorage
-    target.setItem(KEY, JSON.stringify(c))
-  }, undefined)
+  const target = remember ? localStorage : sessionStorage
+  const opposite = remember ? sessionStorage : localStorage
+  // Чистим только чужое хранилище (например, старую sessionStorage-запись при переходе
+  // на «запомнить меня»). На целевом — только setItem, без предварительного removeItem:
+  // remove-then-set на одном и том же ключе — это два разных storage-события для других
+  // вкладок (сперва newValue: null, потом новое значение), из-за чего кросс-табовая логика,
+  // завязанная на 'creds стёрты', ловит ложный logout сразу после входа.
+  safe(() => opposite.removeItem(KEY), undefined)
+  safe(() => target.setItem(KEY, JSON.stringify(c)), undefined)
 }
 
 export function clearCredentials(): void {

@@ -8,9 +8,9 @@
   --text-tertiary: rgb(255 255 255 / 0.64);
   --accent: #3d8bff;
   --danger: #ff5c5c;
-  --bubble-in: linear-gradient(239deg, #3b3f5e 0%, #373a4e 50%, #32343d 100%);
+  --bubble-in: #2b2d33;
   --bubble-out: linear-gradient(239deg, #8849b4 0%, #735acd 50%, #5d6ae5 100%);
-  --capsule-bg: rgb(46 51 56 / 0.45);
+  --capsule-bg: rgb(46 51 56 / 0.6);
   --font: -apple-system, BlinkMacSystemFont, 'Roboto', system-ui, Avenir, Helvetica, Arial, sans-serif;
   --rail-w: 77px;
   --list-w: 393px;
@@ -18,7 +18,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root, .app-root { height: 100%; margin: 0; }
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -26,7 +26,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .pattern-bg {
-  background-color: #111215;
+  background-color: #101116;
   background-image: url('./pattern.svg');
-  background-size: 360px;
+  background-size: 240px;
 }

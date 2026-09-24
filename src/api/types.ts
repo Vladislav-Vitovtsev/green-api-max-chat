@@ -9,6 +9,14 @@ export type RawNotification = {
   body: Record<string, unknown>
 }
 
+export type RawQuotedMessage = {
+  stanzaId?: string
+  participant?: string
+  typeMessage?: string
+  textMessage?: string
+  caption?: string
+}
+
 export type RawHistoryItem = {
   type: 'incoming' | 'outgoing'
   idMessage: string
@@ -20,4 +28,7 @@ export type RawHistoryItem = {
   statusMessage?: string
   senderName?: string
   sendByApi?: boolean
+  isDeleted?: boolean
+  isEdited?: boolean
+  quotedMessage?: RawQuotedMessage
 }

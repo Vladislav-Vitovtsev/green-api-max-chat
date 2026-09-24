@@ -28,3 +28,11 @@ it('clear чистит оба хранилища, битый JSON → null', () 
   sessionStorage.setItem('max-chat:credentials', '{bad')
   expect(loadCredentials()).toBeNull()
 })
+
+it('remember=true при уже сохранённых кредах не трогает localStorage.removeItem — только setItem', () => {
+  saveCredentials(c, true)
+  const removeSpy = vi.spyOn(localStorage, 'removeItem')
+  saveCredentials(c, true)
+  expect(removeSpy).not.toHaveBeenCalledWith('max-chat:credentials')
+  removeSpy.mockRestore()
+})

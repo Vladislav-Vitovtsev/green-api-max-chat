@@ -1,6 +1,6 @@
 import { IconButton } from '@maxhub/max-ui'
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { MAX_MESSAGE_LENGTH } from '../store/actions'
+import { MAX_MESSAGE_LENGTH } from '../core/limits'
 import { IconSend } from './icons'
 import styles from './Composer.module.css'
 import { texts } from './texts'

@@ -11,7 +11,7 @@ export function Banner() {
     <div role="status" className={`${styles.banner} ${banner === 'notAuthorized' || banner === 'quota' ? styles.warn : ''}`}>
       {texts.banner[banner]}
       {banner === 'notAuthorized' && (
-        <a href="https://console.green-api.com" target="_blank" rel="noreferrer">Открыть консоль</a>
+        <a href="https://console.green-api.com" target="_blank" rel="noreferrer">{texts.banner.openConsole}</a>
       )}
     </div>
   )

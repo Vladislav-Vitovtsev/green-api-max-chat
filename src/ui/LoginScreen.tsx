@@ -64,6 +64,7 @@ export function LoginScreen({ onLogin, initialError = null }: Props) {
           <label className={styles.field}>
             <span>{texts.login.apiUrl}</span>
             <Input aria-label={texts.login.apiUrl} autoComplete="off" value={apiUrl} onChange={(e) => setUrl(e.target.value)} />
+            <small className={styles.hint}>{texts.login.apiUrlHint}</small>
           </label>
 
           <label className={styles.remember}>

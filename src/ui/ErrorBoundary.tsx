@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { toApiError } from '../api/errors'
 import { texts } from './texts'
 
 export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -7,7 +8,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
     return { failed: true }
   }
   componentDidCatch(error: unknown) {
-    console.error('[ui]', error instanceof Error ? error.message : error)
+    // Сырое сообщение исключения может содержать текст сообщения/номер телефона (например,
+    // если он попал в стек рендера) — в лог идёт только категория, как и в остальных
+    // console.* по кодовой базе (actions.ts, poller.ts).
+    console.error('[ui]', toApiError(error).kind)
   }
   render() {
     if (!this.state.failed) return this.props.children

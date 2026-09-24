@@ -110,6 +110,52 @@ describe('createGreenApi', () => {
     expect((err as ApiError).kind).toBe('unknown')
   })
 
+  it('sendMessage: свой таймаут даже без внешнего signal', async () => {
+    const f = fakeFetch(200, '{"idMessage":"m1"}')
+    const api = createGreenApi(creds, f.impl)
+    await api.sendMessage('10000000', 'привет')
+    expect(f.calls[0]!.init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('sendMessage: внешний AbortController обрывает через combined signal', async () => {
+    const calls: { url: string; init: RequestInit }[] = []
+    const impl = ((_url: string, init: RequestInit) => {
+      calls.push({ url: _url, init })
+      return new Promise((_, reject) => {
+        init.signal!.addEventListener('abort', () => reject(init.signal!.reason))
+      })
+    }) as unknown as typeof fetch
+    const api = createGreenApi(creds, impl)
+    const controller = new AbortController()
+    const promise = api.sendMessage('10000000', 'привет', controller.signal)
+    controller.abort()
+    const err = await promise.catch((e: unknown) => e)
+    expect((err as Error).name).toBe('AbortError')
+  })
+
+  it('getChatHistory: свой таймаут даже без внешнего signal', async () => {
+    const f = fakeFetch(200, '[]')
+    const api = createGreenApi(creds, f.impl)
+    await api.getChatHistory('1', 100)
+    expect(f.calls[0]!.init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('getChatHistory: внешний AbortController обрывает через combined signal', async () => {
+    const calls: { url: string; init: RequestInit }[] = []
+    const impl = ((_url: string, init: RequestInit) => {
+      calls.push({ url: _url, init })
+      return new Promise((_, reject) => {
+        init.signal!.addEventListener('abort', () => reject(init.signal!.reason))
+      })
+    }) as unknown as typeof fetch
+    const api = createGreenApi(creds, impl)
+    const controller = new AbortController()
+    const promise = api.getChatHistory('1', 100, controller.signal)
+    controller.abort()
+    const err = await promise.catch((e: unknown) => e)
+    expect((err as Error).name).toBe('AbortError')
+  })
+
   it('receiveNotification: внешний AbortController обрывает через combined signal', async () => {
     const calls: { url: string; init: RequestInit }[] = []
     const impl = ((_url: string, init: RequestInit) => {

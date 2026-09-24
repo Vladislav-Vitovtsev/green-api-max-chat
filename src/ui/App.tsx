@@ -1,41 +1,56 @@
-import { useEffect } from 'react'
+import { Button, Typography } from '@maxhub/max-ui'
+import { useEffect, useState } from 'react'
 import { useStore } from 'zustand'
 import { actions } from '../store/actions'
+import { selectCredentials } from '../store/selectors'
 import { appStore } from '../store/store'
 import { ChatLayout } from './ChatLayout'
 import { LoginScreen } from './LoginScreen'
+import styles from './LoginScreen.module.css'
+import { texts } from './texts'
 
-let restored = false
+function OtherTabScreen() {
+  const [stealing, setStealing] = useState(false)
+  const takeOver = () => {
+    setStealing(true)
+    void actions.takeOver().finally(() => setStealing(false))
+  }
+  return (
+    <div className={styles.page}>
+      <div className={styles.card}>
+        <Typography.Headline variant="small" className={styles.title}>{texts.otherTab.title}</Typography.Headline>
+        <Typography.Body variant="small" className={styles.subtitle}>{texts.otherTab.hint}</Typography.Body>
+        <Button size="large" stretched onClick={takeOver} disabled={stealing} loading={stealing}>{texts.otherTab.takeOver}</Button>
+      </div>
+    </div>
+  )
+}
 
 export function App() {
-  const credentials = useStore(appStore, (s) => s.credentials)
+  const credentials = useStore(appStore, selectCredentials)
   const authError = useStore(appStore, (s) => s.authError)
+  const tab = useStore(appStore, (s) => s.tab)
 
   useEffect(() => {
-    if (!restored) {
-      restored = true
-      actions.restore()
-    }
+    actions.start()
     const wake = () => document.visibilityState === 'visible' && actions.wake()
     const online = () => actions.wake()
-    const storage = (e: StorageEvent) => {
-      if (e.key === 'max-chat:data') void appStore.persist.rehydrate()
-    }
     document.addEventListener('visibilitychange', wake)
     window.addEventListener('online', online)
-    window.addEventListener('storage', storage)
     return () => {
       document.removeEventListener('visibilitychange', wake)
       window.removeEventListener('online', online)
-      window.removeEventListener('storage', storage)
     }
   }, [])
 
+  if (tab === 'pending') return null
+  if (tab === 'blocked') return <OtherTabScreen />
   return credentials ? <ChatLayout /> : <LoginScreen onLogin={actions.login} initialError={authError} />
 }
 
 // R6: HMR-dispose зовёт stop() (обрыв опроса без очистки кредов/данных), а не
 // logout() — иначе после каждой правки App.tsx в dev пришлось бы входить заново.
+// Лок активной вкладки остаётся за ней: новый App зовёт start(), и тот перезапускает restore().
 if (import.meta.hot) {
   import.meta.hot.dispose(() => actions.stop())
 }

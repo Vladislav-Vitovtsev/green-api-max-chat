@@ -4,9 +4,15 @@
 .row { display: flex; flex-direction: column; padding: 2px 0; }
 .in { align-items: flex-start; }
 .out { align-items: flex-end; }
-.bubble { max-width: min(560px, 75%); padding: 6px 10px 6px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.bubbleIn { background: var(--bubble-in); border-bottom-left-radius: 6px; }
-.bubbleOut { background: var(--bubble-out); border-bottom-right-radius: 6px; }
+.bubble { max-width: min(560px, 60%); padding: 8px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quote { padding: 2px 0 6px 10px; margin-bottom: 4px; border-left: 2px solid rgb(255 255 255 / 0.35); }
+.quoteAuthor { display: block; font-size: 13px; line-height: 16px; font-weight: 600; color: var(--text-secondary); }
+.quoteText { display: block; font-size: 13px; line-height: 16px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bubbleIn { background: var(--bubble-in); }
+.bubbleOut { background: var(--bubble-out); }
 .text { font-size: 16px; line-height: 24px; }
-.meta { float: right; display: inline-flex; gap: 3px; align-items: center; margin: 6px 0 -4px 10px; font-size: 13px; line-height: 16px; color: var(--text-tertiary); }
+.mediaLabel { display: block; font-size: 13px; line-height: 18px; color: var(--text-tertiary); margin-bottom: 2px; }
+.deleted { font-style: italic; color: var(--text-tertiary); }
+.edited { color: var(--text-tertiary); }
+.meta { float: right; display: inline-flex; gap: 3px; align-items: center; margin: 6px 0 -3px 10px; font-size: 13px; line-height: 16px; color: var(--text-tertiary); }
 .retry { margin-top: 4px; background: none; border: 0; color: var(--danger); font-size: 13px; cursor: pointer; padding: 0; }

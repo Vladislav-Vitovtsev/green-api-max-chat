@@ -1,3 +1,4 @@
+import { anySignal } from '../api/abort'
 import { ApiError, isAbortError, toApiError } from '../api/errors'
 import type { RawNotification } from '../api/types'
 import { backoffDelay, sleep as realSleep } from './backoff'
@@ -43,7 +44,7 @@ export function createPoller(deps: PollerDeps) {
     }
     wakeController = new AbortController()
     try {
-      await sleep(ms, AbortSignal.any([stop, wakeController.signal]))
+      await sleep(ms, anySignal([stop, wakeController.signal]))
     } finally {
       wakePending = false
     }
@@ -78,6 +79,12 @@ export function createPoller(deps: PollerDeps) {
         continue
       }
 
+      // receive() мог успешно зарезолвиться ровно в момент stop.abort() (сессия
+      // остановлена/logout, пока receive «летел»), не бросив AbortError. Без этой проверки
+      // мы бы обработали и ack'нули уведомление уже после остановки — событие ушло бы
+      // в onEvent (запись в стор, который logout мог уже очистить) вхолостую.
+      if (stop.aborted) return
+
       setStatus('polling')
 
       if (!n) {
@@ -98,7 +105,9 @@ export function createPoller(deps: PollerDeps) {
           const ev = parseNotification(n.body)
           if (ev) deps.onEvent(ev)
         } catch (e) {
-          console.warn('[poller] обработчик уведомления упал', e)
+          // Сырой e может нести текст входящего сообщения (парсер упал на его содержимом) —
+          // в лог идёт только категория ошибки, как и везде по кодовой базе.
+          console.warn('[poller] обработчик уведомления упал', toApiError(e).kind)
         }
       }
 

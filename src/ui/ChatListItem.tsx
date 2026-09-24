@@ -1,4 +1,6 @@
 import { useStore } from 'zustand'
+import type { Message } from '../core/model'
+import { captionOf } from '../core/text'
 import { appStore } from '../store/store'
 import { selectChat, selectLastMessage } from '../store/selectors'
 import { ChatAvatar } from './ChatAvatar'
@@ -6,6 +8,12 @@ import { formatTime } from './format'
 import { StatusIcon } from './MessageBubble'
 import styles from './ChatList.module.css'
 import { texts } from './texts'
+
+function previewText(m: Message): string {
+  const caption = captionOf(m)
+  const body = m.deleted ? texts.chat.deleted : m.mediaLabel ? `${m.mediaLabel}${caption ? ` ${caption}` : ''}` : m.text
+  return m.direction === 'out' ? `${texts.chat.you}${body}` : body
+}
 
 export function ChatListItem({ chatId, active, onOpen }: { chatId: string; active: boolean; onOpen(id: string): void }) {
   const chat = useStore(appStore, selectChat(chatId))
@@ -23,7 +31,7 @@ export function ChatListItem({ chatId, active, onOpen }: { chatId: string; activ
             {last && formatTime(last.timestamp)}
           </span>
         </span>
-        <span className={styles.preview}>{last ? (last.direction === 'out' ? `Вы: ${last.text}` : last.text) : texts.chat.noMessages}</span>
+        <span className={styles.preview}>{last ? previewText(last) : texts.chat.noMessages}</span>
       </span>
     </button>
   )

@@ -1,5 +1,5 @@
 import type { DomainEvent, MessageStatus } from './model'
-import { extractNotificationText } from './text'
+import { extractNotificationContent, quoteContent } from './text'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Obj) : {})
@@ -35,21 +35,36 @@ export function parseNotification(body: unknown): DomainEvent | null {
 
   const direction = MESSAGE_TYPES[type]
   if (direction) {
+    const messageData = obj(b.messageData)
+    // deletedMessage/editedMessage — служебные маркеры об изменении другого сообщения
+    // (несут stanzaId, а не контент), а не самостоятельное сообщение для отображения.
+    const msgType = nonEmptyStr(messageData.typeMessage)
+    if (msgType === 'deletedMessage' || msgType === 'editedMessage') return null
     const sender = obj(b.senderData)
     const chatId = nonEmptyStr(sender.chatId)
     const id = nonEmptyStr(b.idMessage)
     const ts = num(b.timestamp)
     if (!chatId || !id || ts === undefined) return null
+    // senderName — это имя собеседника. Для входящих это ровно то, что нужно, если
+    // MAX не прислал chatName. Для исходящих senderName — это владелец инстанса
+    // («Владелец» и т.п.), подставлять его в заголовок чата нельзя.
+    const chatName = direction === 'in' ? (nonEmptyStr(sender.chatName) ?? nonEmptyStr(sender.senderName)) : nonEmptyStr(sender.chatName)
+    const content = extractNotificationContent(b.messageData)
+    // Цитата обычно лежит в messageData.quotedMessage, а для extendedTextMessage —
+    // вложена в messageData.extendedTextMessageData.quotedMessage.
+    const quoteRaw = messageData.quotedMessage ?? obj(messageData.extendedTextMessageData).quotedMessage
     return {
       type: 'message',
-      chatName: nonEmptyStr(sender.chatName) ?? nonEmptyStr(sender.senderName),
+      chatName,
       message: {
         id,
         chatId,
         direction,
-        text: extractNotificationText(b.messageData),
+        text: content.text,
+        mediaLabel: content.mediaLabel,
         timestamp: ts * 1000,
         status: 'sent',
+        quote: quoteContent(quoteRaw, chatId),
       },
     }
   }

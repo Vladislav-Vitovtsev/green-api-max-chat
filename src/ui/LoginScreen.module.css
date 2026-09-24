@@ -8,6 +8,7 @@
 .title { text-align: center; }
 .subtitle { text-align: center; color: var(--text-tertiary); margin-top: -8px; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-tertiary); }
+.hint { font-size: 12px; color: var(--text-tertiary); }
 .remember { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--text-secondary); }
 .error { margin: 0; color: var(--danger); font-size: 14px; }
 .eye { background: none; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 0; display: flex; }
