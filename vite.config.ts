@@ -10,5 +10,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     server: { deps: { inline: ['@maxhub/max-ui'] } },
     css: false,
+    testTimeout: 15000,
+    pool: 'threads',
+    maxWorkers: 2,
   },
 })

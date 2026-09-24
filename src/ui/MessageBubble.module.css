@@ -1,0 +1,12 @@
+.status { color: var(--text-tertiary); }
+.read { color: #7fc3ff; }
+.failedIcon { color: var(--danger); }
+.row { display: flex; flex-direction: column; padding: 2px 0; }
+.in { align-items: flex-start; }
+.out { align-items: flex-end; }
+.bubble { max-width: min(560px, 75%); padding: 6px 10px 6px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubbleIn { background: var(--bubble-in); border-bottom-left-radius: 6px; }
+.bubbleOut { background: var(--bubble-out); border-bottom-right-radius: 6px; }
+.text { font-size: 16px; line-height: 24px; }
+.meta { float: right; display: inline-flex; gap: 3px; align-items: center; margin: 6px 0 -4px 10px; font-size: 13px; line-height: 16px; color: var(--text-tertiary); }
+.retry { margin-top: 4px; background: none; border: 0; color: var(--danger); font-size: 13px; cursor: pointer; padding: 0; }

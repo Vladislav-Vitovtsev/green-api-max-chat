@@ -1,0 +1,32 @@
+:root {
+  --bg-primary: #17181c;
+  --bg-secondary: #25262d;
+  --bg-active: rgb(50 52 61);
+  --bg-input: rgb(255 255 255 / 0.09);
+  --text-primary: #fff;
+  --text-secondary: rgb(255 255 255 / 0.8);
+  --text-tertiary: rgb(255 255 255 / 0.64);
+  --accent: #3d8bff;
+  --danger: #ff5c5c;
+  --bubble-in: linear-gradient(239deg, #3b3f5e 0%, #373a4e 50%, #32343d 100%);
+  --bubble-out: linear-gradient(239deg, #8849b4 0%, #735acd 50%, #5d6ae5 100%);
+  --capsule-bg: rgb(46 51 56 / 0.45);
+  --font: -apple-system, BlinkMacSystemFont, 'Roboto', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --rail-w: 77px;
+  --list-w: 393px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: 16px/24px var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+.pattern-bg {
+  background-color: #111215;
+  background-image: url('./pattern.svg');
+  background-size: 360px;
+}

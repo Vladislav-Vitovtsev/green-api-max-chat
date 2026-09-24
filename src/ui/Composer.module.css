@@ -1,0 +1,6 @@
+.wrap { padding: 0 16px 16px; }
+.counter { font-size: 12px; color: var(--text-tertiary); text-align: right; padding: 0 8px 4px; }
+.over { color: var(--danger); }
+.pill { display: flex; align-items: flex-end; gap: 8px; background: var(--bg-secondary); border-radius: 22px; padding: 8px 8px 8px 16px; }
+.input { flex: 1; resize: none; background: none; border: 0; outline: none; color: var(--text-primary); font: 16px/24px var(--font); max-height: 200px; padding: 2px 0; }
+.input::placeholder { color: var(--text-tertiary); }
