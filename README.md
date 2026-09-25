@@ -5,6 +5,8 @@
 Тестовое задание GREEN-API: веб-интерфейс для отправки и приёма текстовых сообщений в MAX.
 Демо: https://max-chat.vitovtsev.site
 
+![Переписка в веб-чате](docs/screenshot-chat.png)
+
 ## Что умеет
 
 - вход по `idInstance` и `apiTokenInstance`
