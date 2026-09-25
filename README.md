@@ -44,15 +44,29 @@ console.green-api.com → создать инстанс MAX → авторизо
 ## Как устроено
 
 ```
-ui → store → core → api
+app → ui → store → core → api
 ```
 
-Направление зависимостей одностороннее и закреплено правилом ESLint (`no-restricted-imports` в `eslint.config.js`): `api` не знает про `core`, `store` и `ui`; `core` не знает про React и store; `store` не знает про UI. Слой можно тестировать и переиспользовать отдельно от остальных.
+Направление зависимостей одностороннее и закреплено правилом ESLint (`no-restricted-imports` в `eslint.config.js`): `api` не знает про `core`, `store` и `ui`; `core` не знает про React и store; `store` не знает про UI; `ui` не знает про `app`. Слой можно тестировать и переиспользовать отдельно от остальных.
 
 - `api`: тонкий fetch-клиент (`getStateInstance`, `sendMessage`, `getChatHistory`, `checkAccount`, `receiveNotification`, `deleteNotification`, `getChats`, `lastIncomingMessages`, `lastOutgoingMessages`). Маскирует токен в тексте ошибок и сетевых сообщений (`mask.ts`), различает виды ошибок (`unauthorized`, `notAuthorized`, `rateLimit`, `quota`, `network`, `validation`, `unknown`).
 - `core`: чистые функции и цикл опроса без побочных эффектов на React или store: разбор уведомлений (`notifications.ts`), нормализация номера (`phone.ts`), слияние истории и статусов сообщений (`messages.ts`, `history.ts`), сам поллер (`poller.ts`) и лок активной вкладки (`tabLock.ts`).
 - `store`: Zustand-хранилище и действия (`login`, `createChat`, `sendMessage`, `retryMessage` и другие), которые дергают api и core и пишут в state.
 - `ui`: компоненты на `@maxhub/max-ui` и CSS Modules, читают store через селекторы.
+- `app`: корневой `App` и `ErrorBoundary`, собирают экраны из `ui` и подключают store.
+
+Внутри слоя у каждого модуля и компонента своя папка, тесты лежат рядом с кодом:
+
+```
+src/
+  main.tsx
+  app/
+  api/        client/ errors/ abort/
+  core/       model.ts limits.ts messages/ notifications/ phone/ poller/ tabLock/
+  store/      store.ts selectors.ts actions/ reduce/ credentials/
+  ui/         components/<Имя>/ lib/ styles/
+  test/
+```
 
 ### Цикл опроса
 

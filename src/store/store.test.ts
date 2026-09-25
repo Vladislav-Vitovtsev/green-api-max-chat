@@ -1,7 +1,7 @@
 import type { StateStorage } from 'zustand/middleware'
-import type { GreenApi } from '../api/greenApi'
+import type { GreenApi } from '../api/client/greenApi'
 import type { Message } from '../core/model'
-import { createActions } from './actions'
+import { createActions } from './actions/actions'
 import { createAppStore } from './store'
 
 const creds = { apiUrl: 'https://api.green-api.com', idInstance: '1', apiTokenInstance: 't' }

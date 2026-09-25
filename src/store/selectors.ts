@@ -1,4 +1,4 @@
-import { unreadOf } from './reduce'
+import { unreadOf } from './reduce/reduce'
 import type { AppState } from './store'
 
 export const selectChatOrder = (s: AppState) => s.chatOrder

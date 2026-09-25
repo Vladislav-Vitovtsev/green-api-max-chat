@@ -26,7 +26,8 @@ export default tseslint.config(
       ],
     },
   },
-  layer(['src/api/**'], ['**/core/*', '**/store/*', '**/ui/*', 'react', 'zustand*'], 'api — нижний слой'),
-  layer(['src/core/**'], ['**/store/*', '**/ui/*', 'react', 'zustand*'], 'core не знает про React и store'),
-  layer(['src/store/**'], ['**/ui/*', 'react'], 'store не знает про UI'),
+  layer(['src/api/**'], ['**/app/*', '**/core/*', '**/store/*', '**/ui/*', 'react', 'zustand*'], 'api — нижний слой'),
+  layer(['src/core/**'], ['**/app/*', '**/store/*', '**/ui/*', 'react', 'zustand*'], 'core не знает про React и store'),
+  layer(['src/store/**'], ['**/app/*', '**/ui/*', 'react'], 'store не знает про UI'),
+  layer(['src/ui/**'], ['**/app/*'], 'ui не знает про app'),
 )

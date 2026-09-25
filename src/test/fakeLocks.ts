@@ -1,4 +1,4 @@
-import type { LocksLike } from '../core/tabLock'
+import type { LocksLike } from '../core/tabLock/tabLock'
 
 type Waiter = { grant: () => void }
 type Holder = { reject: (e: unknown) => void; token: object }
