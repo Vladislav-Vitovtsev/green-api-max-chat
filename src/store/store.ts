@@ -4,6 +4,7 @@ import type { ApiErrorKind } from '../api/errors'
 import type { Credentials } from '../api/types'
 import type { MessagesState } from '../core/messages'
 import type { Chat, Message, MessageStatus } from '../core/model'
+import { plausiblePhone } from '../core/phone'
 
 export type Banner = null | 'notAuthorized' | 'quota' | 'offline'
 export type Connection = 'idle' | 'polling' | 'offline' | 'error'
@@ -60,6 +61,15 @@ function failStalePending(messagesById: Record<string, Message>): Record<string,
   return changed ? out : messagesById
 }
 
+function healPersistedChats(chats: Record<string, Chat>): Record<string, Chat> {
+  const out: Record<string, Chat> = {}
+  for (const [id, chat] of Object.entries(chats)) {
+    const { unread: _legacy, ...rest } = chat as Chat & { unread?: number }
+    out[id] = { ...rest, phone: plausiblePhone(rest.phone) }
+  }
+  return out
+}
+
 export function createAppStore(storage?: StateStorage) {
   let writable = false
   let resolved: StateStorage | null = null
@@ -86,7 +96,7 @@ export function createAppStore(storage?: StateStorage) {
         const p = (persisted ?? {}) as Partial<Persisted>
         return {
           ...current,
-          chats: p.chats ?? current.chats,
+          chats: p.chats ? healPersistedChats(p.chats) : current.chats,
           chatOrder: p.chatOrder ?? current.chatOrder,
           orderByChat: p.orderByChat ?? current.orderByChat,
           ownerId: p.ownerId ?? current.ownerId,

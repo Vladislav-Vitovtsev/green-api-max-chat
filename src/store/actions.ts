@@ -1,20 +1,32 @@
 import { ApiError, isAbortError, toApiError, type ApiErrorKind } from '../api/errors'
 import { createGreenApi, type GreenApi } from '../api/greenApi'
-import type { Credentials } from '../api/types'
+import type { Credentials, RawHistoryItem } from '../api/types'
+import { backoffDelay, sleep as realSleep } from '../core/backoff'
 import { mapHistory, maxRawHistoryTimestamp } from '../core/history'
 import { MAX_MESSAGE_LENGTH } from '../core/limits'
 import {
   applyStatus, confirmLocal, keepInFlight, markFailed, reconcileChatWithHistory, removeMessage, upsertMessages,
+  upsertMessagesWithEcho,
 } from '../core/messages'
-import type { Message } from '../core/model'
-import { formatPhone, normalizePhone } from '../core/phone'
+import type { Chat, Message } from '../core/model'
+import { formatPhone, normalizePhone, plausiblePhone } from '../core/phone'
 import { createPoller } from '../core/poller'
 import { acquireActiveTab, type ActiveTab, type LocksLike } from '../core/tabLock'
 import { clearCredentials, loadCredentials, saveCredentials } from './credentials'
-import { reduceEvent, touchChat } from './reduce'
+import { markRead, orderEquals, recomputeLastMessageAt, reduceEvent, sortChatOrder, syncedOrder, touchChat } from './reduce'
 import { appStore, initialState, type AppState, type AppStore } from './store'
 
 export const HISTORY_COUNT = 100
+export const HISTORY_GAP_MS = 1100
+export const HISTORY_MAX_RETRIES = 3
+export const PREVIEW_PAUSE_MS = 1100
+export const PREVIEW_COUNT = 5
+export const PREVIEW_MAX_RETRIES = 3
+const JOURNAL_MINUTES = 7 * 24 * 60
+
+function abortError(): DOMException {
+  return new DOMException('aborted', 'AbortError')
+}
 
 export type CreateChatResult =
   | { ok: true; chatId: string }
@@ -29,6 +41,7 @@ type Deps = {
   lockWaitMs?: number
   uuid?: () => string
   now?: () => number
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>
   creds?: {
     load: typeof loadCredentials
     save: typeof saveCredentials
@@ -41,6 +54,7 @@ export function createActions(deps: Deps) {
   const makeApi = deps.makeApi ?? ((c) => createGreenApi(c))
   const uuid = deps.uuid ?? (() => crypto.randomUUID())
   const now = deps.now ?? (() => Date.now())
+  const sleep = deps.sleep ?? realSleep
   const credStore = deps.creds ?? { load: loadCredentials, save: saveCredentials, clear: clearCredentials }
 
   let api: GreenApi | null = null
@@ -48,6 +62,60 @@ export function createActions(deps: Deps) {
   let wake: () => void = () => {}
   let activeTab: ActiveTab | null = null
   let generation = 0
+
+  type HistoryWaiter = { high: boolean; go: () => void }
+  const historyWaiters: HistoryWaiter[] = []
+  let historyBusy = false
+  let lastHistoryAt: number | null = null
+  let pendingReloads = 0
+
+  function pumpHistory(): void {
+    if (historyBusy) return
+    const idx = historyWaiters.findIndex((w) => w.high || pendingReloads === 0)
+    if (idx < 0) return
+    const [next] = historyWaiters.splice(idx, 1)
+    historyBusy = true
+    next!.go()
+  }
+
+  function acquireHistory(high: boolean, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.reject(abortError())
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        const i = historyWaiters.indexOf(waiter)
+        if (i >= 0) historyWaiters.splice(i, 1)
+        reject(abortError())
+      }
+      const waiter: HistoryWaiter = {
+        high,
+        go: () => {
+          signal.removeEventListener('abort', onAbort)
+          resolve()
+        },
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+      historyWaiters.push(waiter)
+      pumpHistory()
+    })
+  }
+
+  async function historyRequest(
+    client: GreenApi, chatId: string, count: number, signal: AbortSignal, high: boolean,
+  ): Promise<RawHistoryItem[]> {
+    await acquireHistory(high, signal)
+    try {
+      if (lastHistoryAt !== null) {
+        const wait = lastHistoryAt + HISTORY_GAP_MS - now()
+        if (wait > 0) await sleep(wait, signal)
+      }
+      if (signal.aborted) throw abortError()
+      return await client.getChatHistory(chatId, count, signal)
+    } finally {
+      lastHistoryAt = now()
+      historyBusy = false
+      pumpHistory()
+    }
+  }
 
   const set = (patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) =>
     store.setState(typeof patch === 'function' ? patch(store.getState()) : patch)
@@ -99,6 +167,7 @@ export function createActions(deps: Deps) {
     credStore.save(creds, remember)
     set({ credentials: creds, authError: null })
     startPolling()
+    void syncChatList()
   }
 
   function restore(): void {
@@ -108,6 +177,7 @@ export function createActions(deps: Deps) {
     ensureOwner(saved.creds.idInstance)
     set({ credentials: saved.creds })
     startPolling()
+    void syncChatList()
   }
 
   function stop(): void {
@@ -132,10 +202,26 @@ export function createActions(deps: Deps) {
     if (!api) return
     const client = api
     const gen = generation
-    const signal = session?.signal
-    const knownIds = new Set(store.getState().orderByChat[chatId] ?? [])
+    const signal = session?.signal ?? new AbortController().signal
+    const s0 = store.getState()
+    const knownIds = new Set(s0.orderByChat[chatId] ?? [])
+    const wasActive = s0.activeChatId === chatId
+    if (s0.historyError[chatId]) set((s) => ({ historyError: { ...s.historyError, [chatId]: false } }))
+    pendingReloads++
     try {
-      const raw = await client.getChatHistory(chatId, HISTORY_COUNT, signal)
+      let raw: RawHistoryItem[]
+      for (let attempt = 0; ; ) {
+        try {
+          raw = await historyRequest(client, chatId, HISTORY_COUNT, signal, true)
+          break
+        } catch (e) {
+          if (gen !== generation || signal.aborted || isAbortError(e)) throw e
+          const kind = toApiError(e).kind
+          if ((kind !== 'rateLimit' && kind !== 'network') || ++attempt > HISTORY_MAX_RETRIES) throw e
+          await sleep(backoffDelay(attempt), signal)
+          if (gen !== generation || signal.aborted) return
+        }
+      }
       const items = mapHistory(raw, chatId)
       const rawMaxTs = maxRawHistoryTimestamp(raw)
       if (gen !== generation) return
@@ -162,29 +248,192 @@ export function createActions(deps: Deps) {
           delete pendingStatus[item.id]
         }
         const base = { ...s, ...merged, chats: { ...s.chats, [chatId]: { ...chat, historyLoaded: true } } }
+        const touched = last ? touchChat(base, chatId, last) : { chats: base.chats }
+        let chats = chatId === s.activeChatId ? markRead({ ...merged, chats: touched.chats }, chatId) : touched.chats
+        if (wasActive && chatId !== s.activeChatId) {
+          const lastIn = items.findLast((m) => m.direction === 'in')
+          const target = chats[chatId]
+          if (lastIn && target && lastIn.timestamp > (target.readUpTo ?? 0)) {
+            chats = { ...chats, [chatId]: { ...target, readUpTo: lastIn.timestamp } }
+          }
+        }
         return {
           ...merged,
-          ...(last ? touchChat(base, chatId, last) : { chats: base.chats }),
+          ...touched,
+          chats,
           historyError: { ...s.historyError, [chatId]: false },
           pendingStatus,
         }
       })
     } catch (e) {
-      if (gen !== generation || signal?.aborted || isAbortError(e)) return
+      if (gen !== generation || signal.aborted || isAbortError(e)) return
       console.warn('[history]', toApiError(e).kind)
       set((s) => ({ historyError: { ...s.historyError, [chatId]: true } }))
+    } finally {
+      pendingReloads--
+      pumpHistory()
+    }
+  }
+
+  async function loadOldPreviews(client: GreenApi, gen: number, signal: AbortSignal): Promise<void> {
+    const s0 = store.getState()
+    const targets = s0.chatOrder.filter(
+      (id) => id !== s0.activeChatId && !s0.chats[id]?.historyLoaded && !(s0.orderByChat[id]?.length),
+    )
+    let attempt = 0
+    for (let i = 0; i < targets.length; ) {
+      if (gen !== generation || signal.aborted) return
+      const chatId = targets[i]!
+      const live = store.getState()
+      if (chatId === live.activeChatId || live.chats[chatId]?.historyLoaded || live.orderByChat[chatId]?.length) {
+        i++
+        continue
+      }
+      let raw: RawHistoryItem[]
+      try {
+        raw = await historyRequest(client, chatId, PREVIEW_COUNT, signal, false)
+      } catch (e) {
+        if (gen !== generation || signal.aborted || isAbortError(e)) return
+        const kind = toApiError(e).kind
+        if (kind === 'rateLimit' || kind === 'network') {
+          if (++attempt > PREVIEW_MAX_RETRIES) return
+          await sleep(backoffDelay(attempt), signal)
+          continue
+        }
+        console.warn('[preview]', kind)
+        attempt = 0
+        i++
+        continue
+      }
+      attempt = 0
+      if (gen !== generation || signal.aborted) return
+      const last = mapHistory(raw, chatId).at(-1)
+      const s = store.getState()
+      if (last && s.chats[chatId]) {
+        const merged = upsertMessagesWithEcho(s, [last], true)
+        const touched = touchChat({ ...s, ...merged }, chatId, last)
+        const chats = chatId === s.activeChatId ? markRead({ ...merged, chats: touched.chats }, chatId) : touched.chats
+        set({ ...merged, ...touched, chats })
+      }
+      i++
+      if (i < targets.length) await sleep(PREVIEW_PAUSE_MS, signal)
+    }
+  }
+
+  async function syncChatList(): Promise<void> {
+    if (!api) return
+    const client = api
+    const gen = generation
+    const signal = session?.signal
+    try {
+      const requestedAt = now()
+      const rawChats = await client.getChats(signal)
+      if (gen !== generation) return
+      const userChats = rawChats.filter((c) => c.type === 'user')
+      const getChatsOrder = userChats.map((c) => c.chatId)
+
+      const s1 = store.getState()
+      let chats = s1.chats
+      const newIds: string[] = []
+      for (const rc of userChats) {
+        const phone = plausiblePhone(rc.phoneNumber)
+        const existing = chats[rc.chatId]
+        const neverOpened = existing?.readUpTo === undefined
+        const serverUnread = neverOpened ? rc.unreadCount : existing?.serverUnread
+        const serverUnreadAt = neverOpened ? requestedAt : existing?.serverUnreadAt
+        if (existing) {
+          const isPlaceholder = existing.title.startsWith('+') || existing.title === existing.chatId
+          const title = isPlaceholder && rc.name ? rc.name : existing.title
+          const nextPhone = plausiblePhone(existing.phone) || phone
+          if (
+            nextPhone !== existing.phone || title !== existing.title ||
+            serverUnread !== existing.serverUnread || serverUnreadAt !== existing.serverUnreadAt
+          ) {
+            if (chats === s1.chats) chats = { ...chats }
+            chats[rc.chatId] = { ...existing, phone: nextPhone, title, serverUnread, serverUnreadAt }
+          }
+        } else {
+          const chat: Chat = {
+            chatId: rc.chatId, phone, title: rc.name || (phone ? formatPhone(phone) : rc.chatId),
+            historyLoaded: false, serverUnread, serverUnreadAt,
+          }
+          if (chats === s1.chats) chats = { ...chats }
+          chats[rc.chatId] = chat
+          newIds.push(rc.chatId)
+        }
+      }
+      const healed = recomputeLastMessageAt(chats, s1.orderByChat, s1.messagesById)
+      if (healed !== chats) chats = healed
+
+      const order = syncedOrder(chats, [...s1.chatOrder, ...newIds], getChatsOrder)
+      const orderChanged = !orderEquals(order, s1.chatOrder)
+      if (chats !== s1.chats || orderChanged) {
+        set({ chats, chatOrder: orderChanged ? order : s1.chatOrder })
+      }
+
+      const [incoming, outgoing] = await Promise.all([
+        client.lastIncomingMessages(JOURNAL_MINUTES, signal),
+        client.lastOutgoingMessages(JOURNAL_MINUTES, signal),
+      ])
+      if (gen !== generation) return
+
+      const byChat = new Map<string, RawHistoryItem[]>()
+      for (const item of [...incoming, ...outgoing]) {
+        if (!item || typeof item !== 'object' || !item.chatId) continue
+        const chatId = item.chatId.split('@')[0]!
+        const list = byChat.get(chatId)
+        if (list) list.push(item)
+        else byChat.set(chatId, [item])
+      }
+
+      const s2 = store.getState()
+      let result = s2
+      for (const [chatId, items] of byChat) {
+        if (!result.chats[chatId]) continue
+        const mapped = mapHistory(items, chatId)
+        const last = mapped[mapped.length - 1]
+        if (!last) continue
+        const merged = upsertMessagesWithEcho(result, mapped, true)
+        const touched = touchChat({ ...result, ...merged }, chatId, last)
+        if (
+          merged.messagesById !== result.messagesById || merged.orderByChat !== result.orderByChat ||
+          touched.chats !== result.chats || touched.chatOrder !== result.chatOrder
+        ) {
+          result = { ...result, ...merged, ...touched }
+        }
+      }
+
+      const readChats = markRead(result, result.activeChatId)
+      if (readChats !== result.chats) result = { ...result, chats: readChats }
+
+      if (result !== s2) {
+        const finalOrder = syncedOrder(result.chats, result.chatOrder, getChatsOrder)
+        set({
+          messagesById: result.messagesById, orderByChat: result.orderByChat,
+          chats: result.chats, chatOrder: orderEquals(finalOrder, result.chatOrder) ? result.chatOrder : finalOrder,
+        })
+      }
+
+      if (signal) {
+        void loadOldPreviews(client, gen, signal).catch((e: unknown) => {
+          if (!isAbortError(e)) console.error('[preview]', toApiError(e).kind)
+        })
+      }
+    } catch (e) {
+      if (gen !== generation || signal?.aborted || isAbortError(e)) return
+      console.error('[syncChatList]', toApiError(e).kind)
     }
   }
 
   async function openChat(chatId: string | null): Promise<void> {
-    set({ activeChatId: chatId })
+    set((s) => ({ activeChatId: chatId, chats: markRead({ ...s, chats: markRead(s, s.activeChatId) }, chatId) }))
     if (chatId) await reloadHistory(chatId)
   }
 
   async function createChat(input: string): Promise<CreateChatResult> {
     const r = normalizePhone(input)
     if (!r.ok) return { ok: false, error: r.error }
-    const existing = Object.values(store.getState().chats).find((c) => c.phone === r.phone)
+    const existing = Object.values(store.getState().chats).find((c) => c.phone !== '' && c.phone === r.phone)
     if (existing) {
       await openChat(existing.chatId)
       return { ok: true, chatId: existing.chatId }
@@ -196,13 +445,17 @@ export function createActions(deps: Deps) {
       const res = await client.checkAccount(r.phone)
       if (gen !== generation) return { ok: false, error: 'unauthorized' }
       if (!res.exist || !res.chatId) return { ok: false, error: 'noAccount' }
-      set((s) => ({
-        chats: {
-          ...s.chats,
-          [res.chatId]: { chatId: res.chatId, phone: r.phone, title: formatPhone(r.phone), historyLoaded: false, lastMessageAt: now() },
-        },
-        chatOrder: [res.chatId, ...s.chatOrder.filter((id) => id !== res.chatId)],
-      }))
+      set((s) => {
+        const known = s.chats[res.chatId]
+        const chat = known
+          ? { ...known, phone: known.phone || r.phone }
+          : { chatId: res.chatId, phone: r.phone, title: formatPhone(r.phone), historyLoaded: false }
+        const chats = { ...s.chats, [res.chatId]: chat }
+        return {
+          chats,
+          chatOrder: known ? s.chatOrder : sortChatOrder(chats, [...s.chatOrder, res.chatId]),
+        }
+      })
       await openChat(res.chatId)
       return { ok: true, chatId: res.chatId }
     } catch (e) {
@@ -280,6 +533,7 @@ export function createActions(deps: Deps) {
     createChat,
     openChat,
     reloadHistory,
+    syncChatList,
     sendMessage,
     retryMessage,
     wake: () => wake(),

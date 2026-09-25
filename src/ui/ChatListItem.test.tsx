@@ -61,6 +61,41 @@ it('превью удалённого сообщения показывает «
   expect(screen.getByText('Сообщение удалено')).toBeInTheDocument()
 })
 
+it('непрочитанные > 0 показывают бейдж с числом и aria-label', () => {
+  appStore.setState((s) => ({
+    chats: { ...s.chats, '6': { chatId: '6', phone: '79991234573', title: 'Ольга Смирнова', historyLoaded: true, serverUnread: 3 } },
+    chatOrder: [...s.chatOrder, '6'],
+  }))
+  render(<ChatListItem chatId="6" active={false} onOpen={() => {}} />)
+  expect(screen.getByText('3')).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: '3 непрочитанных' })).toBeInTheDocument()
+})
+
+it('непрочитанных нет - бейдж скрыт', () => {
+  appStore.setState((s) => ({
+    chats: {
+      ...s.chats,
+      '7': { chatId: '7', phone: '79991234574', title: 'Без бейджа', historyLoaded: true, serverUnread: 0 },
+      '8': { chatId: '8', phone: '79991234575', title: 'Тоже без бейджа', historyLoaded: true },
+    },
+    chatOrder: [...s.chatOrder, '7', '8'],
+  }))
+  const { rerender } = render(<ChatListItem chatId="7" active={false} onOpen={() => {}} />)
+  expect(screen.queryByLabelText(/непрочитанных/)).not.toBeInTheDocument()
+  rerender(<ChatListItem chatId="8" active={false} onOpen={() => {}} />)
+  expect(screen.queryByLabelText(/непрочитанных/)).not.toBeInTheDocument()
+})
+
+it('больше 99 непрочитанных - «99+», aria-label с точным числом', () => {
+  appStore.setState((s) => ({
+    chats: { ...s.chats, '9': { chatId: '9', phone: '79991234576', title: 'Много непрочитанных', historyLoaded: true, serverUnread: 150 } },
+    chatOrder: [...s.chatOrder, '9'],
+  }))
+  render(<ChatListItem chatId="9" active={false} onOpen={() => {}} />)
+  expect(screen.getByText('99+')).toBeInTheDocument()
+  expect(screen.getByLabelText('150 непрочитанных')).toBeInTheDocument()
+})
+
 it('превью своего удалённого сообщения: префикс «Вы: » сохраняется', () => {
   appStore.setState((s) => ({
     chats: { ...s.chats, '5': { chatId: '5', phone: '79991234571', title: 'Мария Кузнецова', historyLoaded: true } },

@@ -1,4 +1,4 @@
-import { formatPhone, formatPhoneInput, normalizePhone } from './phone'
+import { formatPhone, formatPhoneInput, normalizePhone, plausiblePhone } from './phone'
 
 describe('normalizePhone', () => {
   it.each([
@@ -106,5 +106,19 @@ describe('formatPhoneInput', () => {
   it('пустой ввод', () => {
     expect(formatPhoneInput('')).toBe('')
     expect(formatPhoneInput('   ')).toBe('')
+  })
+})
+
+describe('plausiblePhone', () => {
+  it.each([
+    [79991234567, '79991234567'],
+    ['+7 999 123-45-67', '79991234567'],
+    ['375291234567', '375291234567'],
+  ])('%s → %s', (input, phone) => {
+    expect(plausiblePhone(input)).toBe(phone)
+  })
+
+  it.each([[0], ['0'], ['0000000000'], ['12345'], [''], [undefined], [null]])('%s → пустая строка', (input) => {
+    expect(plausiblePhone(input)).toBe('')
   })
 })

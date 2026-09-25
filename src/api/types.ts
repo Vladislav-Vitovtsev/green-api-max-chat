@@ -17,6 +17,14 @@ export type RawQuotedMessage = {
   caption?: string
 }
 
+export type RawChatSummary = {
+  chatId: string
+  name: string
+  phoneNumber?: number | string
+  type: 'user' | 'group' | 'channel' | 'bot'
+  unreadCount: number
+}
+
 export type RawHistoryItem = {
   type: 'incoming' | 'outgoing'
   idMessage: string

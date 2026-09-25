@@ -46,6 +46,9 @@ describe('createAppStore — rehydrate', () => {
       checkAccount: vi.fn(async () => ({ exist: true, chatId: '10000001' })),
       receiveNotification: vi.fn(() => new Promise<null>(() => {})),
       deleteNotification: vi.fn(async () => {}),
+      getChats: vi.fn(async () => []),
+      lastIncomingMessages: vi.fn(async () => []),
+      lastOutgoingMessages: vi.fn(async () => []),
     }
     const actions = createActions({
       store,
@@ -110,5 +113,23 @@ describe('createAppStore — запись персиста только из а�
     expect(reader.getState().chats['10000001']).toBeDefined()
     expect(reader.getState().ownerId).toBe('1')
     expect(reader.getState().messagesById['local-1']?.status).toBe('failed')
+  })
+
+  it('rehydrate выбрасывает мусорный телефон "0" из старого персиста, нормальный оставляет', async () => {
+    const storage = sharedStorage()
+    storage.raw = JSON.stringify({
+      version: 2,
+      state: {
+        chats: {
+          '10000001': { chatId: '10000001', phone: '0', title: '+0', historyLoaded: false },
+          '10000002': { ...chat, chatId: '10000002' },
+        },
+        chatOrder: ['10000001', '10000002'], messagesById: {}, orderByChat: {}, ownerId: '1',
+      },
+    })
+    const store = createAppStore(storage)
+    await store.persist.rehydrate()
+    expect(store.getState().chats['10000001']!.phone).toBe('')
+    expect(store.getState().chats['10000002']!.phone).toBe('79990000001')
   })
 })

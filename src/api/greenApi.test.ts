@@ -173,6 +173,61 @@ describe('createGreenApi', () => {
     expect((err as Error).name).toBe('AbortError')
   })
 
+  it('getChats: URL без query, пустой ответ → []', async () => {
+    const f = fakeFetch(200, '')
+    const api = createGreenApi(creds, f.impl)
+    await expect(api.getChats()).resolves.toEqual([])
+    expect(f.calls[0]!.url).toBe('https://3100.api.green-api.com/waInstance3100/getChats/SECRET')
+    expect(f.calls[0]!.init.method).toBe('GET')
+    expect(f.calls[0]!.init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('getChats: отдаёт список как есть', async () => {
+    const body = JSON.stringify([
+      { chatId: '10000001', name: 'Тест', phoneNumber: 79991234567, type: 'user', unreadCount: 2 },
+      { chatId: '20000001', name: 'Группа', type: 'group', unreadCount: 0 },
+    ])
+    const f = fakeFetch(200, body)
+    const api = createGreenApi(creds, f.impl)
+    await expect(api.getChats()).resolves.toEqual([
+      { chatId: '10000001', name: 'Тест', phoneNumber: 79991234567, type: 'user', unreadCount: 2 },
+      { chatId: '20000001', name: 'Группа', type: 'group', unreadCount: 0 },
+    ])
+  })
+
+  it('lastIncomingMessages: minutes в query, пустой ответ → []', async () => {
+    const f = fakeFetch(200, '')
+    const api = createGreenApi(creds, f.impl)
+    await expect(api.lastIncomingMessages(10080)).resolves.toEqual([])
+    expect(f.calls[0]!.url).toBe('https://3100.api.green-api.com/waInstance3100/lastIncomingMessages/SECRET?minutes=10080')
+    expect(f.calls[0]!.init.method).toBe('GET')
+    expect(f.calls[0]!.init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('lastOutgoingMessages: minutes в query, пустой ответ → []', async () => {
+    const f = fakeFetch(200, '')
+    const api = createGreenApi(creds, f.impl)
+    await expect(api.lastOutgoingMessages(10080)).resolves.toEqual([])
+    expect(f.calls[0]!.url).toBe('https://3100.api.green-api.com/waInstance3100/lastOutgoingMessages/SECRET?minutes=10080')
+  })
+
+  it('getChats/lastIncomingMessages/lastOutgoingMessages: внешний AbortController обрывает через combined signal', async () => {
+    for (const method of ['getChats', 'lastIncomingMessages', 'lastOutgoingMessages'] as const) {
+      const impl = ((_url: string, init: RequestInit) => {
+        return new Promise((_, reject) => {
+          init.signal!.addEventListener('abort', () => reject(init.signal!.reason))
+        })
+      }) as unknown as typeof fetch
+      const api = createGreenApi(creds, impl)
+      const controller = new AbortController()
+      const promise =
+        method === 'getChats' ? api.getChats(controller.signal) : api[method](10080, controller.signal)
+      controller.abort()
+      const err = await promise.catch((e: unknown) => e)
+      expect((err as Error).name).toBe('AbortError')
+    }
+  })
+
   it('receiveNotification: fetch реджектится TimeoutError → network', async () => {
     const calls: { url: string; init: RequestInit }[] = []
     const impl = (async (url: string, init: RequestInit) => {

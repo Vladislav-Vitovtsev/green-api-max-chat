@@ -1,5 +1,7 @@
 import type { Message, MessageStatus, Quote } from './model'
 
+const ECHO_MATCH_WINDOW_MS = 2 * 60 * 1000
+
 export const statusRank: Record<MessageStatus, number> = {
   pending: 0,
   sent: 1,
@@ -33,6 +35,23 @@ function insertSorted(order: string[], byId: Record<string, Message>, m: Message
   let i = order.length
   while (i > 0 && (byId[order[i - 1]!]?.timestamp ?? 0) > m.timestamp) i--
   return [...order.slice(0, i), m.id, ...order.slice(i)]
+}
+
+export function findTimedOutLocalMatch(state: MessagesState, m: Message, onlyFailed = false): string | undefined {
+  if (m.direction !== 'out' || state.messagesById[m.id]) return undefined
+  let best: string | undefined
+  let bestDelta = Infinity
+  for (const id of state.orderByChat[m.chatId] ?? []) {
+    const cand = state.messagesById[id]
+    if (!cand || !id.startsWith('local-') || cand.text !== m.text) continue
+    if (cand.status !== 'failed' && (onlyFailed || cand.status !== 'pending')) continue
+    const delta = Math.abs(m.timestamp - cand.timestamp)
+    if (delta > ECHO_MATCH_WINDOW_MS || delta >= bestDelta) continue
+    if (!onlyFailed) return id
+    best = id
+    bestDelta = delta
+  }
+  return best
 }
 
 export function upsertMessages(state: MessagesState, msgs: Message[]): MessagesState {
@@ -155,6 +174,16 @@ export function confirmLocal(
     messagesById: { ...rest, [idMessage]: { ...local, id: idMessage, status } },
     orderByChat: { ...state.orderByChat, [local.chatId]: order },
   }
+}
+
+export function upsertMessagesWithEcho(state: MessagesState, msgs: Message[], onlyFailed = false): MessagesState {
+  let s = state
+  for (const m of msgs) {
+    const matched = findTimedOutLocalMatch(s, m, onlyFailed)
+    s = upsertMessages(s, [m])
+    if (matched) s = confirmLocal(s, matched, m.id)
+  }
+  return s
 }
 
 export function markFailed(state: MessagesState, id: string): MessagesState {

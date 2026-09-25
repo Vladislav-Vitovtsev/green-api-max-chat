@@ -6,11 +6,35 @@ describe('parseNotification', () => {
     expect(parseNotification(fixtures.incomingText)).toEqual({
       type: 'message',
       chatName: 'Тест Тестов',
+      chatType: 'user',
+      peerPhone: '79990000002',
       message: {
         id: 'in-1', chatId: '10000001', direction: 'in', text: 'Привет',
         timestamp: 1763115112000, status: 'sent',
       },
     })
+  })
+
+  it('группа, канал и бот: chatType из senderData.chatType', () => {
+    const group = parseNotification(fixtures.incomingGroupText)
+    expect(group?.type === 'message' && group.chatType).toBe('group')
+    const channel = parseNotification(fixtures.incomingChannelText)
+    expect(channel?.type === 'message' && channel.chatType).toBe('channel')
+    const bot = parseNotification(fixtures.incomingBotText)
+    expect(bot?.type === 'message' && bot.chatType).toBe('bot')
+  })
+
+  it('исходящее не несёт peerPhone, даже если senderPhoneNumber есть в senderData', () => {
+    for (const f of [fixtures.outgoingApi, fixtures.outgoingPhone]) {
+      const ev = parseNotification(f)
+      expect(ev?.type === 'message' && ev.peerPhone).toBeUndefined()
+    }
+  })
+
+  it('senderPhoneNumber отсутствует или 0 → peerPhone не выставляется', () => {
+    const ev = parseNotification(fixtures.incomingUnknownNoPhone)
+    expect(ev?.type === 'message' && ev.peerPhone).toBeUndefined()
+    expect(ev?.type === 'message' && ev.chatName).toBe('Новый собеседник')
   })
 
   it('extendedTextMessage берёт text', () => {

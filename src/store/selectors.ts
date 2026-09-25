@@ -1,3 +1,4 @@
+import { unreadOf } from './reduce'
 import type { AppState } from './store'
 
 export const selectChatOrder = (s: AppState) => s.chatOrder
@@ -12,3 +13,4 @@ export const selectLastMessage = (chatId: string) => (s: AppState) => {
 }
 export const selectBanner = (s: AppState) => s.banner
 export const selectCredentials = (s: AppState) => s.credentials
+export const selectUnread = (chatId: string) => (s: AppState) => unreadOf(s, chatId)

@@ -1,7 +1,7 @@
 import type { Message } from './model'
 import {
   applyStatus, confirmLocal, keepInFlight, markFailed, nextStatus, reconcileChatWithHistory, removeMessage,
-  upsertMessages, type MessagesState,
+  upsertMessages, upsertMessagesWithEcho, type MessagesState,
 } from './messages'
 
 const empty: MessagesState = { messagesById: {}, orderByChat: {} }
@@ -284,5 +284,24 @@ describe('reconcileChatWithHistory', () => {
     let s = upsertMessages(empty, [msg('a', 100), msg('marker-bubble', 200, { text: '' })])
     s = reconcileChatWithHistory(s, 'c', [msg('a', 100)], keepInFlight)
     expect(s.messagesById['marker-bubble']).toBeDefined()
+  })
+})
+
+describe('upsertMessagesWithEcho в режиме журналов (onlyFailed)', () => {
+  const local = (id: string, timestamp: number, status: Message['status']) => msg(id, timestamp, { text: 'ок', status })
+
+  it('pending local- не склеивается с эхом из журнала: его подтвердит ответ sendMessage', () => {
+    const s0 = upsertMessages(empty, [local('local-1', 1_000, 'pending')])
+    const s = upsertMessagesWithEcho(s0, [msg('real-1', 1_100, { text: 'ок' })], true)
+    expect(s.messagesById['local-1']).toBeDefined()
+    expect(s.messagesById['real-1']).toBeDefined()
+  })
+
+  it('из двух failed с тем же текстом склеивается ближайший по времени, а не первый', () => {
+    const s0 = upsertMessages(empty, [local('local-1', 1_000, 'failed'), local('local-2', 60_000, 'failed')])
+    const s = upsertMessagesWithEcho(s0, [msg('real-2', 61_000, { text: 'ок' })], true)
+    expect(s.messagesById['local-1']).toBeDefined()
+    expect(s.messagesById['local-2']).toBeUndefined()
+    expect(s.messagesById['real-2']!.status).toBe('sent')
   })
 })

@@ -1,7 +1,7 @@
 import { anySignal } from './abort'
 import { ApiError, errorFromResponse, isAbortError } from './errors'
 import { maskSecret } from './mask'
-import type { Credentials, RawHistoryItem, RawNotification } from './types'
+import type { Credentials, RawChatSummary, RawHistoryItem, RawNotification } from './types'
 
 export type GreenApi = {
   getStateInstance(signal?: AbortSignal): Promise<string>
@@ -10,6 +10,9 @@ export type GreenApi = {
   checkAccount(phone: string, signal?: AbortSignal): Promise<{ exist: boolean; chatId: string }>
   receiveNotification(timeoutSec: number, signal?: AbortSignal): Promise<RawNotification | null>
   deleteNotification(receiptId: number, signal?: AbortSignal): Promise<void>
+  getChats(signal?: AbortSignal): Promise<RawChatSummary[]>
+  lastIncomingMessages(minutes: number, signal?: AbortSignal): Promise<RawHistoryItem[]>
+  lastOutgoingMessages(minutes: number, signal?: AbortSignal): Promise<RawHistoryItem[]>
 }
 
 type CallInit = {
@@ -103,6 +106,27 @@ export function createGreenApi(creds: Credentials, fetchImpl: typeof fetch = (..
 
     async deleteNotification(receiptId, signal) {
       await call('deleteNotification', { httpMethod: 'DELETE', suffix: `/${receiptId}`, signal })
+    },
+
+    async getChats(signal) {
+      const r = await call<RawChatSummary[]>('getChats', { signal: withTimeout(signal, 30_000) })
+      return Array.isArray(r) ? r : []
+    },
+
+    async lastIncomingMessages(minutes, signal) {
+      const r = await call<RawHistoryItem[]>('lastIncomingMessages', {
+        query: `?minutes=${minutes}`,
+        signal: withTimeout(signal, 30_000),
+      })
+      return Array.isArray(r) ? r : []
+    },
+
+    async lastOutgoingMessages(minutes, signal) {
+      const r = await call<RawHistoryItem[]>('lastOutgoingMessages', {
+        query: `?minutes=${minutes}`,
+        signal: withTimeout(signal, 30_000),
+      })
+      return Array.isArray(r) ? r : []
     },
   }
 }

@@ -21,10 +21,15 @@ export type Chat = {
   title: string
   historyLoaded: boolean
   lastMessageAt?: number
+  readUpTo?: number
+  serverUnread?: number
+  serverUnreadAt?: number
 }
 
+export type ChatType = 'user' | 'group' | 'channel' | 'bot'
+
 export type DomainEvent =
-  | { type: 'message'; message: Message; chatName?: string }
+  | { type: 'message'; message: Message; chatName?: string; chatType?: ChatType; peerPhone?: string }
   | { type: 'status'; chatId: string; idMessage: string; status: MessageStatus }
   | { type: 'instanceState'; state: string }
   | { type: 'quota' }

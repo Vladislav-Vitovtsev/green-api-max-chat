@@ -4,6 +4,10 @@ const sender = {
   senderName: 'Тест Тестов', senderType: 'user', senderContactName: '', senderPhoneNumber: 79990000002,
 }
 const senderNoChatName = { ...sender, chatName: '', senderName: 'Владелец' }
+const senderGroup = { ...sender, chatId: '20000001', chatType: 'group', chatName: 'Рабочий чат' }
+const senderChannel = { ...sender, chatId: '20000002', chatType: 'channel', chatName: 'Канал новостей' }
+const senderBot = { ...sender, chatId: '20000003', chatType: 'bot', chatName: 'Бот поддержки' }
+const senderNoPhone = { ...sender, chatId: '30000001', chatName: 'Новый собеседник', senderPhoneNumber: 0 }
 
 export const fixtures = {
   incomingText: {
@@ -64,6 +68,26 @@ export const fixtures = {
         quotedMessage: { stanzaId: 'q2', participant: 'me-wid', typeMessage: 'imageMessage', caption: 'Фото места' },
       },
     },
+  },
+  incomingGroupText: {
+    typeWebhook: 'incomingMessageReceived', instanceData, timestamp: 1763115128, idMessage: 'in-10',
+    senderData: senderGroup,
+    messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Всем привет' } },
+  },
+  incomingChannelText: {
+    typeWebhook: 'incomingMessageReceived', instanceData, timestamp: 1763115129, idMessage: 'in-11',
+    senderData: senderChannel,
+    messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Новость' } },
+  },
+  incomingBotText: {
+    typeWebhook: 'incomingMessageReceived', instanceData, timestamp: 1763115131, idMessage: 'in-13',
+    senderData: senderBot,
+    messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Команда /start' } },
+  },
+  incomingUnknownNoPhone: {
+    typeWebhook: 'incomingMessageReceived', instanceData, timestamp: 1763115130, idMessage: 'in-12',
+    senderData: senderNoPhone,
+    messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Здравствуйте' } },
   },
   incomingDeletedMarker: {
     typeWebhook: 'incomingMessageReceived', instanceData, timestamp: 1763115124, idMessage: 'in-6',

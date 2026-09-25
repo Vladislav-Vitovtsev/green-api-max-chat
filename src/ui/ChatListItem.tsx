@@ -2,7 +2,7 @@ import { useStore } from 'zustand'
 import type { Message } from '../core/model'
 import { captionOf } from '../core/text'
 import { appStore } from '../store/store'
-import { selectChat, selectLastMessage } from '../store/selectors'
+import { selectChat, selectLastMessage, selectUnread } from '../store/selectors'
 import { ChatAvatar } from './ChatAvatar'
 import { formatTime } from './format'
 import { StatusIcon } from './MessageBubble'
@@ -18,6 +18,7 @@ function previewText(m: Message): string {
 export function ChatListItem({ chatId, active, onOpen }: { chatId: string; active: boolean; onOpen(id: string): void }) {
   const chat = useStore(appStore, selectChat(chatId))
   const last = useStore(appStore, selectLastMessage(chatId))
+  const unread = useStore(appStore, selectUnread(chatId))
   if (!chat) return null
   return (
     <button type="button" className={`${styles.cell} ${active ? styles.active : ''}`} onClick={() => onOpen(chatId)}
@@ -31,7 +32,14 @@ export function ChatListItem({ chatId, active, onOpen }: { chatId: string; activ
             {last && formatTime(last.timestamp)}
           </span>
         </span>
-        <span className={styles.preview}>{last ? previewText(last) : texts.chat.noMessages}</span>
+        <span className={styles.previewRow}>
+          <span className={styles.preview}>{last ? previewText(last) : texts.chat.noMessages}</span>
+          {unread > 0 && (
+            <span className={styles.badge} role="img" aria-label={texts.chat.unreadAria(unread)}>
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </span>
       </span>
     </button>
   )

@@ -1,10 +1,14 @@
-import type { DomainEvent, MessageStatus } from './model'
+import type { ChatType, DomainEvent, MessageStatus } from './model'
 import { extractNotificationContent, quoteContent } from './text'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Obj) : {})
 const nonEmptyStr = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined)
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
+function chatTypeOf(v: unknown): ChatType | undefined {
+  return v === 'user' || v === 'group' || v === 'channel' || v === 'bot' ? v : undefined
+}
 
 export function mapStatus(raw: unknown): MessageStatus | null {
   switch (raw) {
@@ -44,11 +48,16 @@ export function parseNotification(body: unknown): DomainEvent | null {
     const ts = num(b.timestamp)
     if (!chatId || !id || ts === undefined) return null
     const chatName = direction === 'in' ? (nonEmptyStr(sender.chatName) ?? nonEmptyStr(sender.senderName)) : nonEmptyStr(sender.chatName)
+    const chatType = chatTypeOf(sender.chatType)
+    const peerPhoneNum = direction === 'in' ? num(sender.senderPhoneNumber) : undefined
+    const peerPhone = peerPhoneNum ? String(peerPhoneNum) : undefined
     const content = extractNotificationContent(b.messageData)
     const quoteRaw = messageData.quotedMessage ?? obj(messageData.extendedTextMessageData).quotedMessage
     return {
       type: 'message',
       chatName,
+      chatType,
+      peerPhone,
       message: {
         id,
         chatId,

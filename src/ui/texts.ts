@@ -48,6 +48,7 @@ export const texts = {
     quoteFromMe: 'Вы',
     deleted: 'Сообщение удалено',
     edited: 'ред.',
+    unreadAria: (n: number) => `${n} непрочитанных`,
   },
   banner: {
     notAuthorized: 'Инстанс не авторизован: отсканируйте QR-код в консоли GREEN-API',

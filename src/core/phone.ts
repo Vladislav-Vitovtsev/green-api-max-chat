@@ -71,3 +71,12 @@ export function formatPhoneInput(raw: string): string {
   }
   return `+${digits.slice(0, OTHER_MAX_DIGITS)}`
 }
+
+const MIN_PHONE_DIGITS = 10
+
+export function plausiblePhone(v: number | string | null | undefined): string {
+  if (v === null || v === undefined) return ''
+  const digits = String(v).replace(/\D/g, '')
+  if (digits.length < MIN_PHONE_DIGITS || /^0+$/.test(digits)) return ''
+  return digits
+}

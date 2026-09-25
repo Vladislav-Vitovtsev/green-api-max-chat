@@ -41,6 +41,32 @@ it('переключение чата открывает список внизу
   expect(bList.scrollTop).toBe(bList.scrollHeight)
 })
 
+it('пустой phone (автосозданный чат без номера) — подстрока телефона в шапке не показывается', () => {
+  appStore.setState({
+    chats: { c: { chatId: 'c', phone: '', title: 'Аноним', historyLoaded: true } },
+    chatOrder: ['c'],
+    activeChatId: 'c',
+  })
+
+  render(<ChatWindow />)
+
+  expect(screen.getByText('Аноним')).toBeInTheDocument()
+  expect(screen.queryByText('+')).not.toBeInTheDocument()
+})
+
+it('мусорный phone "0" из старого персиста в шапке не показывается как «+0»', () => {
+  appStore.setState({
+    chats: { c: { chatId: 'c', phone: '0', title: 'Иван', historyLoaded: true } },
+    chatOrder: ['c'],
+    activeChatId: 'c',
+  })
+
+  render(<ChatWindow />)
+
+  expect(screen.getByText('Иван')).toBeInTheDocument()
+  expect(screen.queryByText('+0')).not.toBeInTheDocument()
+})
+
 it('черновик в композере не переносится при переключении чата', async () => {
   const user = userEvent.setup()
   appStore.setState({

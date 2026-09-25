@@ -1,6 +1,6 @@
 import { IconButton } from '@maxhub/max-ui'
 import { useStore } from 'zustand'
-import { formatPhone } from '../core/phone'
+import { formatPhone, plausiblePhone } from '../core/phone'
 import { actions } from '../store/actions'
 import { appStore } from '../store/store'
 import { Banner } from './Banner'
@@ -15,6 +15,7 @@ export function ChatWindow() {
   const chatId = useStore(appStore, (s) => s.activeChatId)
   const chat = useStore(appStore, (s) => (s.activeChatId ? s.chats[s.activeChatId] : undefined))
   const historyError = useStore(appStore, (s) => (s.activeChatId ? s.historyError[s.activeChatId] : false))
+  const phone = plausiblePhone(chat?.phone)
 
   return (
     <section className={`${styles.window} pattern-bg`}>
@@ -31,8 +32,8 @@ export function ChatWindow() {
             <ChatAvatar chatId={chatId} title={chat.title} size={40} />
             <div className={styles.headerText}>
               <span className={styles.headerTitle}>{chat.title}</span>
-              {chat.title !== formatPhone(chat.phone) && (
-                <span className={styles.headerSub}>{formatPhone(chat.phone)}</span>
+              {phone !== '' && chat.title !== formatPhone(phone) && (
+                <span className={styles.headerSub}>{formatPhone(phone)}</span>
               )}
             </div>
           </header>
