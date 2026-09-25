@@ -12,8 +12,6 @@ const EMPTY: string[] = []
 
 export function MessageList({ chatId }: { chatId: string }) {
   const order = useStore(appStore, selectOrder(chatId)) ?? EMPTY
-  // Подписка, а не getState() в рендере: byId участвует в разбивке по дням (капсулы дат) —
-  // без подписки React не перерисует список, если messagesById поменялся без изменения order.
   const byId = useStore(appStore, (s) => s.messagesById)
   const ref = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
@@ -34,10 +32,6 @@ export function MessageList({ chatId }: { chatId: string }) {
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }
 
-  // Стабильная ссылка на всё время жизни компонента: MessageBubble — React.memo, и новый
-  // onRetry на каждый рендер MessageList (а он перерендеривается при правке ЛЮБОГО сообщения
-  // в сторе, см. подписку на byId выше) свёл бы memo на нет — все бабблы перерисовывались бы
-  // заново из-за смены пропа, даже если их собственные данные не изменились.
   const onRetry = useCallback((mid: string) => void actions.retryMessage(mid), [])
 
   if (order.length === 0) return <div className={styles.emptyMessages}>{texts.chat.noMessages}</div>

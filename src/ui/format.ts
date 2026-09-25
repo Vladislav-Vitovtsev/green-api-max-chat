@@ -8,8 +8,6 @@ const startOfDay = (ts: number) => {
 }
 const DAY = 86_400_000
 
-// Разница в календарных днях между двумя полночами, а не в фиксированных отрезках
-// по 24 часа: на переходе летнего/зимнего времени сутки могут длиться 23 или 25 часов.
 export function daysBetweenMidnights(fromMidnightMs: number, toMidnightMs: number): number {
   return Math.round((toMidnightMs - fromMidnightMs) / DAY)
 }

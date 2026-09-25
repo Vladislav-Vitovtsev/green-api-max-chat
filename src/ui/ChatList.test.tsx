@@ -26,8 +26,6 @@ it('валидный неизвестный номер — строка видн
   expect(createChat).toHaveBeenCalledWith('89991234567')
   const search = screen.getByPlaceholderText('Найти')
   await waitFor(() => expect(search).toHaveValue(''))
-  // Строка «Написать» (где был фокус) пропадает из DOM вместе с очисткой query — без явного
-  // переноса фокус провалился бы в document.body.
   await waitFor(() => expect(search).toHaveFocus())
 })
 

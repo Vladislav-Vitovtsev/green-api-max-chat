@@ -114,7 +114,6 @@ describe('reduceEvent', () => {
       },
       orderByChat: { '10000001': ['real-1', 'local-2'] },
     }
-    // Повторное/запоздавшее уведомление об уже известном real-1 (подтверждён ответом sendMessage).
     const dupEcho: DomainEvent = {
       type: 'message',
       message: { id: 'real-1', chatId: '10000001', direction: 'out', text: 'ок', timestamp: 1_000, status: 'sent' },
@@ -133,7 +132,6 @@ describe('reduceEvent', () => {
       },
       orderByChat: { '10000001': ['local-1', 'local-2'] },
     }
-    // Эхо ВТОРОГО сообщения приходит первым — матчится всё равно самая старая неподтверждённая (local-1).
     const echoSecond: DomainEvent = {
       type: 'message',
       message: { id: 'real-2', chatId: '10000001', direction: 'out', text: 'ок', timestamp: 2_000, status: 'sent' },

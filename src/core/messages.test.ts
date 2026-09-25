@@ -122,7 +122,6 @@ describe('upsertMessages', () => {
   it('дедуп по id: своё исходящее — серверный timestamp репозиционирует сообщение в orderByChat', () => {
     let s = upsertMessages(empty, [msg('out-1', 100), msg('in-1', 150, { direction: 'in' })])
     expect(order(s)).toEqual(['out-1', 'in-1'])
-    // Эхо с сервера пришло с более поздним timestamp, чем клиентские часы в момент отправки.
     s = upsertMessages(s, [msg('out-1', 200, { status: 'delivered' })])
     expect(order(s)).toEqual(['in-1', 'out-1'])
     expect(s.messagesById['out-1']!.timestamp).toBe(200)
@@ -131,7 +130,6 @@ describe('upsertMessages', () => {
   it('дедуп по id: своё отредактированное сообщение не репозиционируется по timestamp правки', () => {
     let s = upsertMessages(empty, [msg('out-1', 100), msg('in-1', 150, { direction: 'in' })])
     expect(order(s)).toEqual(['out-1', 'in-1'])
-    // Копия с сервера несёт timestamp момента правки (500), а не исходной отправки (100).
     s = upsertMessages(s, [msg('out-1', 500, { edited: true, text: 'исправлено' })])
     expect(order(s)).toEqual(['out-1', 'in-1'])
     expect(s.messagesById['out-1']!.timestamp).toBe(100)
@@ -149,7 +147,6 @@ describe('upsertMessages', () => {
 
   it('дедуп по id: повторный апсерт с идентичным по содержимому, но новым по ссылке quote — та же ссылка стейта', () => {
     const s1 = upsertMessages(empty, [msg('a', 100, { quote: { id: 'q1', text: 'Работает?', fromMe: false } })])
-    // Новый объект той же цитаты (как после повторного парсинга quoteContent) — не иначе.
     const s2 = upsertMessages(s1, [msg('a', 100, { quote: { id: 'q1', text: 'Работает?', fromMe: false } })])
     expect(s2).toBe(s1)
     expect(s2.messagesById.a).toBe(s1.messagesById.a)
@@ -227,8 +224,6 @@ describe('markFailed и removeMessage', () => {
 
 describe('reconcileChatWithHistory', () => {
   it('устаревший id внутри окна истории удаляется', () => {
-    // Окно истории — [fromTs; toTs] по её сообщениям: 'stale' (150) лежит строго между
-    // ними (100 и 200), поэтому попадает под удаление, раз его нет в свежей истории.
     let s = upsertMessages(empty, [msg('stale', 150, { text: '' }), msg('a', 100)])
     s = reconcileChatWithHistory(s, 'c', [msg('a', 100), msg('b', 200)], keepInFlight)
     expect(order(s)).toEqual(['a', 'b'])
@@ -279,9 +274,6 @@ describe('reconcileChatWithHistory', () => {
   })
 
   it('rawMaxTs расширяет верхнюю границу окна — ловит бабл от маркера, отфильтрованного mapHistory', () => {
-    // items (после mapHistory) содержат только 'a' (100) — toTs по ним был бы 100. Но сырой
-    // ответ нёс ещё и маркер (deletedMessage/editedMessage) с timestamp 300, который в items
-    // не попал, зато подтверждает, что сервер учёл события вплоть до 300.
     let s = upsertMessages(empty, [msg('a', 100), msg('marker-bubble', 200, { text: '' })])
     s = reconcileChatWithHistory(s, 'c', [msg('a', 100)], keepInFlight, 300)
     expect(s.messagesById['marker-bubble']).toBeUndefined()

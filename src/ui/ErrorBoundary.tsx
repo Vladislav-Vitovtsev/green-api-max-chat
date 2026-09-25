@@ -8,9 +8,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
     return { failed: true }
   }
   componentDidCatch(error: unknown) {
-    // Сырое сообщение исключения может содержать текст сообщения/номер телефона (например,
-    // если он попал в стек рендера) — в лог идёт только категория, как и в остальных
-    // console.* по кодовой базе (actions.ts, poller.ts).
     console.error('[ui]', toApiError(error).kind)
   }
   render() {

@@ -8,10 +8,6 @@ export function normalizePhone(input: string): PhoneResult {
   if (!trimmed) return { ok: false, error: 'empty' }
   if (!digits) return { ok: false, error: 'format' }
 
-  // Как и в formatPhoneInput: «8» и «9» — ярлыки только для локального ввода без кода
-  // страны. Если пользователь явно набрал «+», это первая цифра настоящего кода страны
-  // (+81 Япония, +90 Турция и т.п.), а не сокращение для РФ — эвристику не применяем,
-  // иначе чужой номер подходящей длины молча принимается за российский.
   const explicitPlus = trimmed.startsWith('+')
   let d = digits
   if (!explicitPlus && d.length === 11 && d.startsWith('8')) d = `7${d.slice(1)}`
@@ -36,13 +32,11 @@ export function formatPhone(phone: string): string {
 
 const RU_GROUPS = [3, 3, 2, 2]
 const BY_GROUPS = [2, 3, 2, 2]
-const RU_NATIONAL_MAX = 10 // сумма RU_GROUPS — код страны «7» + 10 цифр номера = 11 всего
-const BY_NATIONAL_MAX = 9 // сумма BY_GROUPS — код страны «375» + 9 цифр номера = 12 всего
+const RU_NATIONAL_MAX = 10
+const BY_NATIONAL_MAX = 9
 const GROUP_SEPS = [' ', '-', '-']
 const OTHER_MAX_DIGITS = 15
 
-// Группирует национальный номер по маске (например [3,3,2,2]), разделяя группы GROUP_SEPS.
-// national уже обрезан до нужной длины вызывающим кодом — цифр сверх маски здесь не бывает.
 function groupDigits(national: string, groupSizes: number[]): string {
   let result = ''
   let idx = 0
@@ -56,21 +50,11 @@ function groupDigits(national: string, groupSizes: number[]): string {
   return result
 }
 
-// national обрезается до nationalMax — цифры сверх маски РФ/РБ отбрасываются, а не дописываются.
 function withCountryCode(code: string, national: string, groupSizes: number[], nationalMax: number): string {
   const grouped = groupDigits(national.slice(0, nationalMax), groupSizes)
   return grouped ? `+${code} ${grouped}` : `+${code}`
 }
 
-// Форматирует ввод по мере набора теми же правилами, что normalizePhone (8→7 для РФ,
-// ведущая 9 → РФ без кода страны), но без валидации длины — партиальный ввод форматируется
-// частично. Курсор не отслеживается: значение переформатируется целиком при каждом onChange.
-//
-// Ярлыки «8→7» и «9→РФ» — эвристика для локального набора без кода страны и применяются
-// только пока введённых цифр не больше длины полного РФ-номера (иначе это, скорее всего,
-// чужой код страны вроде +86…/+90…, а не затянувшийся ввод РФ). Если ввод начинается с «+»,
-// пользователь явно указывает код страны — тогда «8» и «9» не ярлыки, а первая цифра
-// настоящего кода страны (+86 Китай, +90 Турция и т.п.), и ярлыки не применяются вовсе.
 export function formatPhoneInput(raw: string): string {
   const trimmed = raw.trim()
   const digits = trimmed.replace(/\D/g, '')

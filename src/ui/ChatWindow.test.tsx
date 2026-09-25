@@ -30,7 +30,6 @@ it('переключение чата открывает список внизу
   const { container } = render(<ChatWindow />)
   const listEl = () => container.querySelector(`.${styles.messages}`) as HTMLDivElement
 
-  // пользователь прокрутил список чата A вверх, далеко от низа
   listEl().scrollTop = 50
   fireEvent.scroll(listEl())
 

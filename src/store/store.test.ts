@@ -33,8 +33,6 @@ describe('createAppStore — rehydrate', () => {
   })
 
   it('после rehydrate retryMessage принимает бывший pending (он уже failed, не возвращается рано)', async () => {
-    // Реальный pending всегда local-* (см. actions.sendMessage) — retryMessage теперь
-    // ретраит только такие id (C3), поэтому фикстура тоже local-*, а не произвольный id.
     const pending: Message = { id: 'local-1', chatId: '10000001', direction: 'out', text: 'привет', timestamp: 1, status: 'pending' }
     const chats = { '10000001': { chatId: '10000001', phone: '79990000001', title: '+7 999 000-00-01', historyLoaded: true } }
     const store = createAppStore(preloadedStorage({ 'local-1': pending }, chats, ['10000001'], { '10000001': ['local-1'] }))

@@ -3,7 +3,6 @@ const sender = {
   chatId: '10000001', chatName: 'Тест Тестов', chatType: 'user', sender: '10000001',
   senderName: 'Тест Тестов', senderType: 'user', senderContactName: '', senderPhoneNumber: 79990000002,
 }
-// В исходящих событиях senderName — это владелец инстанса, а не собеседник.
 const senderNoChatName = { ...sender, chatName: '', senderName: 'Владелец' }
 
 export const fixtures = {

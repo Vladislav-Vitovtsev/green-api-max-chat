@@ -29,7 +29,6 @@ it('backspace на разделителе реально удаляет цифр
   expect(input).toHaveValue('+7 999 123-45-67')
   const before = input.value.replace(/\D/g, '')
 
-  // Каретка перед «1» в «+7 999 |123-45-67» — backspace должен стереть пробел-разделитель.
   input.setSelectionRange(7, 7)
   await user.keyboard('{Backspace}')
 
@@ -45,8 +44,6 @@ it('Delete (forward) на разделителе удаляет следующу
   await user.type(input, '89991234567')
   expect(input).toHaveValue('+7 999 123-45-67')
 
-  // Каретка перед дефисом в «+7 999 123|-45-67» — Delete должен стереть дефис-разделитель
-  // и следующую за ним цифру «4», а не предыдущую «3».
   input.setSelectionRange(10, 10)
   await user.keyboard('{Delete}')
 
@@ -60,8 +57,6 @@ it('paste, заменяющий выделение с тем же числом �
   await user.type(input, '89991234567')
   expect(input).toHaveValue('+7 999 123-45-67')
 
-  // Выделяем «45-67» (4 цифры + разделитель) и вставляем «4567» (те же 4 цифры без разделителя) —
-  // цифр столько же и строка короче, как при backspace/delete, но это paste — цифры трогать нельзя.
   input.setSelectionRange(11, 16)
   await user.paste('4567')
 
@@ -113,8 +108,6 @@ it('focus trap: Tab с последнего элемента уходит на �
 it('Safari: если на открытии document.activeElement остался body (клик мышью не фокусирует кнопку), закрытие возвращает фокус на triggerRef, а не на body', async () => {
   const plusButton = document.createElement('button')
   document.body.appendChild(plusButton)
-  // Специально НЕ фокусируем plusButton — так ведёт себя Safari без «Full Keyboard Access»:
-  // клик мышью по кнопке не переводит на неё фокус, document.activeElement остаётся body.
   document.body.focus()
   expect(document.activeElement).toBe(document.body)
 

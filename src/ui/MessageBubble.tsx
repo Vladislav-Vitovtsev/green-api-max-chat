@@ -17,24 +17,14 @@ export function StatusIcon({ status }: { status: MessageStatus }) {
   return <IconAlert aria-label={texts.status.failed} className={styles.failedIcon} />
 }
 
-// memo: MessageList подписан на весь messagesById (U6) — правка ЛЮБОГО сообщения в сторе
-// вызывает его ре-рендер, который заново создаёт JSX для КАЖДОГО баббла в списке. Без memo
-// (и без стабильного onRetry — см. useCallback в MessageList) это означало бы, что баббл
-// каждого сообщения выполняется заново при любой чужой правке в чате, даже когда его
-// собственный m по подписке selectMessage(id) не изменился.
 export const MessageBubble = memo(function MessageBubble({ id, onRetry }: { id: string; onRetry(id: string): void }) {
   const m = useStore(appStore, selectMessage(id))
-  // Автор цитаты (имя чата) и живая версия цитируемого сообщения — оба смотрят в
-  // стор по данным m, поэтому объявлены до `if (!m)`, чтобы не менять порядок хуков.
   const peer = useStore(appStore, (s) => (m ? s.chats[m.chatId] : undefined))
   const quoted = useStore(appStore, (s) => (m?.quote ? s.messagesById[m.quote.id] : undefined))
   if (!m) return null
   const out = m.direction === 'out'
   const caption = captionOf(m)
   const quote = m.quote
-  // Если цитируемое сообщение всё ещё есть в сторе, показываем его актуальные
-  // текст/метку (могло быть отредактировано после того, как на него ответили),
-  // а не замороженный в quote снимок; удалённое — как «Сообщение удалено».
   const quoteAuthor = quote?.fromMe ? texts.chat.quoteFromMe : (peer?.title ?? '')
   const quoteLine = quoted
     ? (quoted.deleted ? texts.chat.deleted : quoted.mediaLabel ?? quoted.text)

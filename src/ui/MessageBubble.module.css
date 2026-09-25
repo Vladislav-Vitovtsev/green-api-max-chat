@@ -4,7 +4,7 @@
 .row { display: flex; flex-direction: column; padding: 2px 0; }
 .in { align-items: flex-start; }
 .out { align-items: flex-end; }
-.bubble { max-width: min(560px, 60%); padding: 8px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble { max-width: min(720px, 65%); padding: 8px 12px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .quote { padding: 2px 0 6px 10px; margin-bottom: 4px; border-left: 2px solid rgb(255 255 255 / 0.35); }
 .quoteAuthor { display: block; font-size: 13px; line-height: 16px; font-weight: 600; color: var(--text-secondary); }
 .quoteText { display: block; font-size: 13px; line-height: 16px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

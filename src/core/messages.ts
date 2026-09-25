@@ -19,21 +19,10 @@ export type MessagesState = {
   orderByChat: Record<string, string[]>
 }
 
-// Сообщение, отправленное этой вкладкой, но ещё не подтверждённое сервером (или сервером
-// отклонённое): local-* id, ещё не переименованный confirmLocal'ом, или статус pending/failed.
-// Используется как keep() для reconcileChatWithHistory (actions.ts.reloadHistory) — такое
-// сообщение не должно исчезать под свежей историей, пока оно «в полёте». Здесь, а не в
-// actions.ts, чтобы тесты reconcileChatWithHistory (messages.test.ts) использовали ту же
-// функцию, а не копию её логики — core не может импортировать store (ESLint-граница слоёв),
-// а обратное можно.
 export function keepInFlight(m: Message): boolean {
   return m.id.startsWith('local-') || m.status === 'pending' || m.status === 'failed'
 }
 
-// quoteContent парсит цитату заново на каждый апсерт и всегда возвращает новый
-// объект, даже когда содержимое то же самое (повторный приход одного и того же
-// цитирующего сообщения). Сравниваем по содержимому, а не по ссылке, иначе
-// каждый такой мерж считается изменением (лишний set/persist/ре-рендер).
 function sameQuote(a: Quote | undefined, b: Quote | undefined): boolean {
   if (a === b) return true
   if (!a || !b) return false
@@ -53,33 +42,12 @@ export function upsertMessages(state: MessagesState, msgs: Message[]): MessagesS
     const existing = byId[m.id]
     if (existing) {
       const status = existing.direction === 'out' ? nextStatus(existing.status, m.status) : existing.status
-      // Удалённое сообщение перезатирает текст пустой строкой даже при повторной
-      // загрузке истории того же чата (openChat дёргает reloadHistory каждый раз).
-      // deleted/edited монотонны: повторная загрузка без флага (или с false) не
-      // должна воскрешать удалённое сообщение или снимать пометку «ред.».
       const deleted = existing.deleted || m.deleted
       const edited = existing.edited || m.edited
-      // Если входящая копия несёт mediaLabel, её text авторитетен даже пустой:
-      // это значит «медиа без подписи», а не «текста не прислали». Иначе старый
-      // текст-подпись (или текст, записанный ещё до разделения на mediaLabel/text)
-      // переживает обновление и дублируется вместе с новой меткой медиа.
       const text = deleted ? '' : m.mediaLabel !== undefined ? m.text : m.text || existing.text
       const mediaLabel = deleted ? undefined : m.mediaLabel ?? existing.mediaLabel
-      // Цитата статична (превью сообщения, на которое ответили, не меняется), поэтому
-      // просто сохраняем её, если повторная копия (например, обычное сообщение того
-      // же id без quotedMessage) её не несёт.
       const incomingQuote = m.quote ?? existing.quote
       const quote = sameQuote(incomingQuote, existing.quote) ? existing.quote : incomingQuote
-      // Своё исходящее сообщение сперва получает клиентский timestamp (Date.now() в момент
-      // sendMessage), чтобы сразу встать в ленту. Когда та же копия приходит с сервера
-      // (эхо в getChatHistory, id стабилен — см. lessons), её timestamp авторитетен для
-      // порядка: переставляем сообщение в orderByChat на серверную позицию, иначе разница
-      // между клиентскими часами и моментом, когда сервер принял сообщение, может навсегда
-      // оставить его не на своём месте относительно входящих. Входящие уже несут серверное
-      // время с первого upsert — для них позицию не трогаем. Отредактированное сообщение
-      // (edited монотонен — уже true в existing или incoming) тоже не репозиционируем: GREEN-API
-      // отдаёт в такой копии timestamp момента ПРАВКИ, а не исходной отправки, и подвинуть
-      // сообщение по нему значило бы передвинуть его в ленте на момент правки, а не отправки.
       const timestamp = existing.direction === 'out' && !edited ? m.timestamp : existing.timestamp
       if (
         status !== existing.status || text !== existing.text || mediaLabel !== existing.mediaLabel ||
@@ -102,32 +70,6 @@ export function upsertMessages(state: MessagesState, msgs: Message[]): MessagesS
   return { messagesById: byId, orderByChat: orders }
 }
 
-// История с сервера авторитетна только в своём временном окне [fromTs, toTs]: всё, что
-// раньше осело в этом чате (например, служебный маркер deletedMessage/editedMessage,
-// который когда-то ещё не фильтровался mapHistory и сохранился в персисте пустым баблом
-// «Сообщение») и попадает в это окно, но не пришло в очередной getChatHistory и не
-// защищено keep(), из чата убирается. Сообщения старше окна (< fromTs) не трогаем —
-// история могла быть загружена не полностью. Сообщения новее окна (> toTs) тоже не
-// трогаем: например, своё уже подтверждённое (sent) сообщение, отправленное только что —
-// сервер мог ещё не успеть отдать его в getChatHistory, и без верхней границы оно бы
-// удалялось как «не подтверждённое историей» при каждом повторном открытии чата.
-// Пустая/неудавшаяся история ничего не стирает.
-//
-// Контракт keep(): функция решает, какие сообщения нельзя удалять, даже если их
-// нет в history и они попадают в окно по времени. Помимо ещё не подтверждённых
-// local-/pending/failed (см. keepInFlight выше в этом файле), вызывающая сторона должна
-// защищать и сообщения, появившиеся в чате уже ПОСЛЕ того, как был отправлен
-// запрос истории (снимок известных на тот момент id, а не текущий стейт на момент
-// вызова reconcile) — иначе свежее входящее, пришедшее по опросу, пока
-// getChatHistory ещё висел в await, будет удалено как «не подтверждённое историей».
-//
-// rawMaxTs: максимальный timestamp *сырого* ответа getChatHistory, включая записи
-// deletedMessage/editedMessage — эти маркеры mapHistory отфильтровывает (см. history.ts),
-// но у них тоже есть timestamp, и обычно он новее всех настоящих сообщений (действие
-// произошло позже создания). Если считать toTs только по уже отфильтрованному history,
-// граница окна окажется ниже, чем сервер реально подтвердил, — и старый бабл от такого
-// маркера, осевший в персисте ещё до того, как mapHistory стал их фильтровать (см. lessons),
-// окажется «новее границы» и переживёт reconcile, хотя сервер уже не о нём не знает.
 export function reconcileChatWithHistory(
   state: MessagesState,
   chatId: string,

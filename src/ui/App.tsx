@@ -48,9 +48,6 @@ export function App() {
   return credentials ? <ChatLayout /> : <LoginScreen onLogin={actions.login} initialError={authError} />
 }
 
-// R6: HMR-dispose зовёт stop() (обрыв опроса без очистки кредов/данных), а не
-// logout() — иначе после каждой правки App.tsx в dev пришлось бы входить заново.
-// Лок активной вкладки остаётся за ней: новый App зовёт start(), и тот перезапускает restore().
 if (import.meta.hot) {
   import.meta.hot.dispose(() => actions.stop())
 }

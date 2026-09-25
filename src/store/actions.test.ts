@@ -155,7 +155,6 @@ describe('sendMessage', () => {
     await t.actions.createChat('79991234567')
 
     const p = t.actions.sendMessage('10000001', 'привет')
-    // Статус для будущего idMessage 'm1' прилетает раньше, чем sendMessage успевает resolve'иться.
     t.store.setState(reduceEvent(t.store.getState(), { type: 'status', chatId: '10000001', idMessage: 'm1', status: 'delivered' }))
     expect(t.store.getState().pendingStatus.m1).toBe('delivered')
 
@@ -183,7 +182,6 @@ describe('sendMessage', () => {
     await p
 
     const s = t.store.getState()
-    // Одна запись, а не дубль local-*/m1, статус — лучший из двух (read).
     expect(s.orderByChat['10000001']).toEqual(['m1'])
     expect(s.messagesById.m1!.status).toBe('read')
     t.actions.logout()
@@ -197,7 +195,6 @@ describe('sendMessage', () => {
     expect(t.store.getState().orderByChat['10000001']).toEqual(['m1'])
     expect(t.store.getState().messagesById.m1!.status).toBe('sent')
 
-    // Сервер прислал статус failed уже для подтверждённого сообщения (недоставлено получателю).
     t.store.setState(reduceEvent(t.store.getState(), { type: 'status', chatId: '10000001', idMessage: 'm1', status: 'failed' }))
     expect(t.store.getState().messagesById.m1!.status).toBe('failed')
 
@@ -348,15 +345,12 @@ describe('onEvent: чужой чат не переписывает persist', () 
     }
     const t = setup(fakeApi({ receiveNotification }))
     await t.actions.login(creds, false)
-    // ждём, пока опрос дойдёт до receive() и зависнет на d.promise — тогда 'connection: polling'
-    // от startPolling уже применился и больше не даст постороннего setState в этом цикле.
     await vi.waitFor(() => expect(calls).toBeGreaterThan(0))
 
     const setStateSpy = vi.spyOn(t.store, 'setState')
     d.resolve({ receiptId: 1, body: fixtures.incomingText })
     await vi.waitFor(() => expect(t.api.deleteNotification).toHaveBeenCalledWith(1, expect.anything()))
 
-    // единственный setState в этом цикле — от poller.onStatus('polling'), не от onEvent на чужой чат
     expect(setStateSpy).toHaveBeenCalledTimes(1)
     t.actions.logout()
   })
@@ -420,7 +414,6 @@ describe('одна активная вкладка: start и takeOver', () => {
     b.actions.start()
     await vi.waitFor(() => expect(b.store.getState().tab).toBe('blocked'))
 
-    // A пишет данные уже после того, как B загрузилась со старым снимком.
     a.store.setState({ chats: { '10000001': chat }, chatOrder: ['10000001'], ownerId: '1' })
 
     b.actions.takeOver()
@@ -466,7 +459,6 @@ describe('одна активная вкладка: start и takeOver', () => {
     const locks = fakeLocks()
     const read = deferred<void>()
     let slow = false
-    // Хранилище вкладки B отвечает на чтение с задержкой, когда это включено.
     const slowStorage: StateStorage = {
       getItem: (k) => (slow ? read.promise.then(() => shared.getItem(k)) : shared.getItem(k)),
       setItem: (k, v) => shared.setItem(k, v),
@@ -482,7 +474,6 @@ describe('одна активная вкладка: start и takeOver', () => {
     slow = true
     const takeOverB = b.actions.takeOver()
     await vi.waitFor(() => expect(a.store.getState().tab).toBe('blocked'))
-    // Пока B ждёт storage, A забирает лок обратно.
     await a.actions.takeOver()
     await vi.waitFor(() => expect(b.store.getState().tab).toBe('blocked'))
     await vi.waitFor(() => expect(a.store.getState().tab).toBe('active'))
@@ -528,10 +519,6 @@ describe('reloadHistory: свежая история чистит протухш
   it('сообщение из персиста прошлой сессии (напр. старый deletedMessage-маркер) исчезает после openChat/reloadHistory', async () => {
     const storage = makeStorage()
 
-    // Сессия 1: обычный логин + создание чата, затем вручную кладём в стор «протухшее»
-    // сообщение — как будто оно осело в персисте ещё до того, как mapHistory стал
-    // фильтровать служебные deletedMessage/editedMessage маркеры (было видно как пустой
-    // бабл «Сообщение»).
     const store1 = createAppStore(storage)
     store1.setPersistWritable(true)
     const a1 = createActions({
@@ -552,8 +539,6 @@ describe('reloadHistory: свежая история чистит протухш
     })
     a1.stop()
 
-    // Сессия 2 (как будто перезагрузили страницу): новый стор синхронно гидрируется тем
-    // же персистом, openChat дёргает reloadHistory и получает актуальную историю без 'stale'.
     const getChatHistory = vi.fn(async () => [
       {
         type: 'incoming', idMessage: 'real', timestamp: 1, typeMessage: 'textMessage',
@@ -580,8 +565,6 @@ describe('reloadHistory: свежая история чистит протухш
 
 describe('reloadHistory: буфер pendingStatus применяется к сообщению, пришедшему из истории', () => {
   it('статус, буферизованный раньше, чем сообщение вообще появилось в сторе, применяется после reloadHistory', async () => {
-    // Первый вызов (внутри createChat/openChat) — пустая история, сообщения ещё нет нигде.
-    // Второй (наш явный reloadHistory ниже) — история уже содержит это сообщение.
     const getChatHistory = vi
       .fn(async () => [] as RawHistoryItem[])
       .mockImplementationOnce(async () => [])
@@ -595,15 +578,12 @@ describe('reloadHistory: буфер pendingStatus применяется к со
     await t.actions.login(creds, false)
     await t.actions.createChat('79991234567')
 
-    // Статус приходит по опросу для сообщения, которого ещё нет в сторе (буферизуется).
     t.store.setState(reduceEvent(t.store.getState(), { type: 'status', chatId: '10000001', idMessage: 'out-9', status: 'read' }))
     expect(t.store.getState().pendingStatus['out-9']).toBe('read')
 
     await t.actions.reloadHistory('10000001')
 
     const s = t.store.getState()
-    // Из истории сообщение пришло бы со статусом 'sent' (нет statusMessage) — но буфер
-    // 'read' применяется поверх, а не теряется, и сама запись в буфере вычищается.
     expect(s.messagesById['out-9']!.status).toBe('read')
     expect(s.pendingStatus['out-9']).toBeUndefined()
     t.actions.logout()
@@ -620,9 +600,6 @@ describe('reloadHistory: rawMaxTs учитывает маркеры deletedMessa
     await t.actions.login(creds, false)
     await t.actions.createChat('79991234567')
 
-    // Протухший бабл от старого маркера (как будто осел в персисте ещё до того, как mapHistory
-    // стал их фильтровать) — 2000мс, между 'real' (1000мс) и маркером (3000мс). Вне окна по
-    // items (toTs был бы 1000), но внутри по rawMaxTs.
     t.store.setState((s) => ({
       messagesById: {
         ...s.messagesById,
@@ -650,14 +627,11 @@ describe('reloadHistory: гонка с поллером во время ожид
     await t.actions.createChat('79991234567')
 
     const p = t.actions.reloadHistory('10000001')
-    // Пока getChatHistory висит, «приходит» входящее — так, как это сделал бы
-    // поллер через onEvent → reduceEvent → set (без обращения к внутреннему set()).
     const incoming: Message = {
       id: 'in-1', chatId: '10000001', direction: 'in', text: 'привет', timestamp: 2_000, status: 'sent',
     }
     t.store.setState(reduceEvent(t.store.getState(), { type: 'message', message: incoming }))
 
-    // История резолвится без incoming (сервер посчитал её раньше, чем оно пришло).
     d.resolve([
       { type: 'incoming', idMessage: 'real', timestamp: 1, typeMessage: 'textMessage', chatId: '10000001', textMessage: 'ок' },
     ])

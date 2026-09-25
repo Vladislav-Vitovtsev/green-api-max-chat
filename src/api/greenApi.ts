@@ -20,9 +20,6 @@ type CallInit = {
   signal?: AbortSignal
 }
 
-// Внешний signal (session.signal из actions.ts) обрывает запрос при logout/relogin, но сам по
-// себе не защищает от зависшего соединения — если сервер не отвечает и не рвёт TCP, fetch без
-// собственного таймаута может висеть неограниченно долго. Комбинируем оба через anySignal.
 function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
   const timeout = AbortSignal.timeout(ms)
   return signal ? anySignal([signal, timeout]) : timeout

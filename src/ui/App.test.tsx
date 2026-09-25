@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { fakeLocks } from '../test/fakeLocks'
 
-// Стор и actions — синглтоны модуля: каждый тест берёт их свежими, как новая вкладка.
 async function freshApp() {
   vi.resetModules()
   const { actions } = await import('../store/actions')
@@ -19,8 +18,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  // Опрос из receiveNotification никогда не резолвится сам — обрываем сессию,
-  // иначе она держит тест живым после его завершения.
   stop()
   vi.unstubAllGlobals()
 })
@@ -58,14 +55,12 @@ it('лок занят другой вкладкой — экран «откры�
     JSON.stringify({ apiUrl: 'https://api.green-api.com', idInstance: '3100', apiTokenInstance: 'tok' }),
   )
   const locks = fakeLocks()
-  // Другая вкладка уже держит лок активной вкладки; после перехвата её request отклоняется.
   locks.request('max-chat:active-tab', { mode: 'exclusive' }, () => new Promise(() => {})).catch(() => {})
   vi.stubGlobal('navigator', { ...navigator, locks })
   const { actions, App } = await freshApp()
   stop = actions.stop
 
   render(<App />)
-  // Лок занят: экран появляется после ожидания лока (ACTIVE_TAB_WAIT_MS).
   expect(await screen.findByText('Приложение открыто в другой вкладке', {}, { timeout: 3000 })).toBeInTheDocument()
   expect(fetchMock).not.toHaveBeenCalled()
   expect(screen.queryByLabelText('idInstance')).not.toBeInTheDocument()

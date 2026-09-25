@@ -3,10 +3,6 @@ import type { LocksLike } from '../core/tabLock'
 type Waiter = { grant: () => void }
 type Holder = { reject: (e: unknown) => void; token: object }
 
-// Фейк LockManager с семантикой браузера для эксклюзивного лока, общий на все «вкладки» теста:
-// занятый лок ставит запрос в очередь; signal снимает ожидающий запрос из очереди с отказом;
-// ifAvailable при занятом локе зовёт колбэк с null; steal отбирает лок, и request прежнего
-// держателя отклоняется AbortError; лок снимается, когда промис колбэка завершился.
 export function fakeLocks(): LocksLike {
   const held = new Map<string, Holder>()
   const queues = new Map<string, Waiter[]>()

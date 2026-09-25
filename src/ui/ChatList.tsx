@@ -46,8 +46,6 @@ export function ChatList() {
     setCreating(false)
     if (r.ok) {
       setQuery('')
-      // Строка «Написать <номер>» (где сейчас фокус) пропадёт из DOM вместе с query — без
-      // явного переноса фокус проваливается в document.body, как раньше с диалогом (U1).
       searchInputRef.current?.focus()
       return
     }

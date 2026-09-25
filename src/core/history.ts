@@ -3,17 +3,11 @@ import type { Message } from './model'
 import { mapStatus } from './notifications'
 import { historyContent, quoteContent } from './text'
 
-// chatId берётся из запроса (аргумент chatId), а не из каждого элемента: история
-// запрашивается для конкретного чата, а сами элементы могут прийти без chatId
-// или в другом формате.
 export function mapHistory(items: RawHistoryItem[], chatId: string): Message[] {
   const out: Message[] = []
   for (const it of items) {
     if (!it || typeof it !== 'object') continue
     if (!it.idMessage || typeof it.timestamp !== 'number') continue
-    // deletedMessage/editedMessage — служебные маркеры об изменении другого сообщения
-    // (несут stanzaId, а не контент), а не самостоятельные сообщения. Само изменённое
-    // сообщение приходит отдельным элементом истории с isDeleted/isEdited — вот его и рендерим.
     if (it.typeMessage === 'deletedMessage' || it.typeMessage === 'editedMessage') continue
     const direction = it.type === 'outgoing' ? 'out' : 'in'
     const deleted = it.isDeleted === true
@@ -34,10 +28,6 @@ export function mapHistory(items: RawHistoryItem[], chatId: string): Message[] {
   return out.sort((a, b) => a.timestamp - b.timestamp)
 }
 
-// Максимальный timestamp *сырого* ответа getChatHistory, включая deletedMessage/editedMessage
-// маркеры (mapHistory их выше отфильтровывает — это не самостоятельные сообщения). Нужен
-// reconcileChatWithHistory как верхняя граница окна истории (C1): без учёта маркеров граница
-// оказалась бы ниже, чем сервер реально подтвердил, см. комментарий там.
 export function maxRawHistoryTimestamp(items: RawHistoryItem[]): number {
   let max = 0
   for (const it of items) {

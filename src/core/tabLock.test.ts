@@ -17,7 +17,6 @@ function tab(locks: LocksLike | null) {
   return { log, handle }
 }
 
-// «Другая вкладка», которая держит лок, пока не вызовут release().
 function holdElsewhere(locks: LocksLike) {
   let release!: () => void
   locks.request('max-chat:active-tab', { mode: 'exclusive' }, () => new Promise<void>((r) => (release = r))).catch(() => {})
@@ -65,7 +64,6 @@ describe('acquireActiveTab', () => {
     expect(a.log).toEqual(['active', 'lost'])
     expect(b.log).toEqual(['blocked', 'active'])
 
-    // Лок у B: третья вкладка заблокирована, A может забрать его обратно.
     const c = tab(locks)
     await sleep(WAIT * 3)
     await a.handle.takeOver()

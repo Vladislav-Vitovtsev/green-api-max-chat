@@ -11,21 +11,12 @@ import { errorText, texts } from './texts'
 type Props = {
   onCreate(input: string): Promise<CreateChatResult>
   onClose(): void
-  // Элемент, куда вернуть фокус при закрытии, если document.activeElement на открытии не
-  // подсказал ничего полезного (Safari без «Full Keyboard Access» не фокусирует кнопки по
-  // клику — activeElement на открытии остаётся document.body, а не реальной кнопкой «+»).
   triggerRef?: RefObject<HTMLElement | null>
 }
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-// Пока диалог открыт, он единственное, что доступно клавиатуре: соседи по всей цепочке
-// предков до <body> должны получить inert (не фокусируются, не кликаются, скрыты от
-// скринридера). Список собираем один раз при монтировании и его же используем для снятия
-// inert на размонтировании — на unmount React успевает отсоединить поддерево диалога от
-// DOM ДО вызова cleanup эффекта, так что повторный обход вверх от dialogRef в cleanup
-// ничего бы уже не нашёл (node.parentElement обрывается на первом отсоединённом узле).
 function collectBackgroundSiblings(dialog: HTMLElement): HTMLElement[] {
   const siblings: HTMLElement[] = []
   let node: HTMLElement | null = dialog
@@ -41,10 +32,6 @@ function collectBackgroundSiblings(dialog: HTMLElement): HTMLElement[] {
   return siblings
 }
 
-// Backspace/Delete над разделителем (пробел/дефис), который маска сама подставила, физически
-// ничего не меняет: цифр столько же, значит при переформатировании тот же разделитель появится
-// на том же месте, и для пользователя клавиша выглядит так, будто ничего не произошло. В этом
-// случае убираем настоящую цифру рядом с кареткой — ту, что реально имел в виду пользователь.
 function removeDigitBeforeCaret(raw: string, caret: number): string {
   for (let i = caret - 1; i >= 0; i--) {
     if (/\d/.test(raw[i]!)) return raw.slice(0, i) + raw.slice(i + 1)
@@ -65,24 +52,12 @@ export function NewChatDialog({ onCreate, onClose, triggerRef }: Props) {
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLFormElement>(null)
-  // Позиция каретки ДО правки — только для фолбэка, когда среда не проставляет
-  // nativeEvent.inputType (см. onPhoneChange). keydown срабатывает раньше, чем браузер
-  // применяет Backspace/Delete, поэтому здесь ещё видна каретка «до».
   const caretBeforeEdit = useRef<number | null>(null)
 
-  // Открытие: запоминаем, что было в фокусе (обычно кнопка «+»), фокусируем поле ввода и
-  // прячем фон от клавиатуры/скринридера. document.body в момент открытия не считается
-  // «был в фокусе»: Safari без «Full Keyboard Access» не переводит фокус на кнопку по клику
-  // мышью, так что activeElement там остаётся body, а не реальным триггером — в этом случае
-  // полагаемся на явный triggerRef. Закрытие: снимаем inert и возвращаем фокус на
-  // previouslyFocused (если он был осмысленным) или на triggerRef.current — иначе после
-  // диалога фокус проваливается в начало документа.
   useEffect(() => {
     const dialog = dialogRef.current
     const active = document.activeElement
     const previouslyFocused = active instanceof HTMLElement && active !== document.body ? active : null
-    // Снимок .current на момент открытия, а не чтение в cleanup: к моменту размонтирования
-    // значение того же ref-объекта могло бы уже указывать на другой узел.
     const trigger = triggerRef?.current ?? null
     inputRef.current?.focus()
     const backgroundSiblings = dialog ? collectBackgroundSiblings(dialog) : []
@@ -91,8 +66,6 @@ export function NewChatDialog({ onCreate, onClose, triggerRef }: Props) {
       for (const el of backgroundSiblings) el.removeAttribute('inert')
       ;(previouslyFocused ?? trigger)?.focus()
     }
-    // triggerRef.current уже снят в trigger выше — читать сам triggerRef эффекту больше незачем,
-    // а как проп для «на время жизни диалога» переменная переоткрывать его не нужно.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -138,8 +111,6 @@ export function NewChatDialog({ onCreate, onClose, triggerRef }: Props) {
 
     let effective = raw
     if (separatorDeleted) {
-      // Решаем по типу события, а не по разнице длин: разница длин при равном числе цифр
-      // бывает и от paste, заменившего выделение (см. тест) — там цифры трогать не нужно.
       const inputType = (e.nativeEvent as InputEvent).inputType
       const isBackward = inputType ? inputType === 'deleteContentBackward' : caretBeforeEdit.current === caret + 1
       const isForward = inputType ? inputType === 'deleteContentForward' : caretBeforeEdit.current === caret

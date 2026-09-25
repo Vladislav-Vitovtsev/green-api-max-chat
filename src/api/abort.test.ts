@@ -38,8 +38,6 @@ describe('anySignal', () => {
       const removeSpy = vi.spyOn(b.signal, 'removeEventListener')
       anySignal([a.signal, b.signal])
       a.abort('причина a')
-      // b ещё не абортился сам, но комбинированный сигнал уже определился по a — подписку на b
-      // снимает cleanup, а не только «once» на собственное событие b.
       expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function))
     } finally {
       AbortSignal.any = native

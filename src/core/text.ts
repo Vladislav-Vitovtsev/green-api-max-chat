@@ -14,9 +14,6 @@ export const MEDIA_LABELS: Record<string, string> = {
 
 const FALLBACK = 'Сообщение'
 
-// Медиа-сообщение — это метка типа («📷 Фото») и, отдельно, подпись автора.
-// UI кладёт их на разные строки (метка сверху, подпись — как обычный текст
-// сообщения снизу), поэтому домен возвращает их раздельно, а не склеенной строкой.
 export type MessageContent = { text: string; mediaLabel?: string }
 
 function mediaContent(type: string, caption: string | undefined): MessageContent {
@@ -27,10 +24,6 @@ type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Obj) : {})
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
-// Подпись к медиа приходит в объекте `<тип>MessageData` (fileMessageData,
-// imageMessageData и т. п.) — имя ключа зависит от типа сообщения, поэтому ищем
-// защитно: любой объект под messageData, чей ключ оканчивается на MessageData
-// и у которого есть строковое поле caption.
 function findCaption(md: Obj): string | undefined {
   for (const key of Object.keys(md)) {
     if (!key.endsWith('MessageData')) continue
@@ -57,12 +50,6 @@ export function historyContent(typeMessage: string, textMessage: string | undefi
   return mediaContent(typeMessage, caption)
 }
 
-// Цитата (превью сообщения, на которое отвечают) приходит и в истории
-// (item.quotedMessage), и в вебхуках (messageData.quotedMessage или, для
-// extendedTextMessage, messageData.extendedTextMessageData.quotedMessage) —
-// в обоих случаях сырой объект неизвестной формы, поэтому парсим защитно.
-// participant — id автора цитируемого сообщения; в личном чате id собеседника
-// совпадает с chatId, поэтому «моё» — это просто несовпадение с ним.
 export function quoteContent(raw: unknown, chatId: string): Quote | undefined {
   const q = obj(raw)
   const id = str(q.stanzaId)
@@ -75,9 +62,6 @@ export function quoteContent(raw: unknown, chatId: string): Quote | undefined {
   return { id, text, mediaLabel, fromMe: participant !== chatId }
 }
 
-// Защитно: если text совпадает с mediaLabel (устаревшие данные до разделения на
-// метку и подпись, или их слияние не подчистило дубликат), подписи нет — иначе
-// одна и та же строка показывается дважды: меткой сверху и текстом снизу.
 export function captionOf(m: Message): string {
   return m.mediaLabel && m.text === m.mediaLabel ? '' : m.text
 }

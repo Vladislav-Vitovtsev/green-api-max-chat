@@ -25,7 +25,5 @@
 
 @media (max-width: 768px) {
   .mobileOnly { display: inline-flex; }
-  /* На мобильном список занимает всю ширину — тот же оверрайд, что и в ChatLayout.module.css
-     (.layout > aside), но явный, а не только через более высокую специфичность чужого файла. */
   .list { width: 100%; }
 }

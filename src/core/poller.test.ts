@@ -13,8 +13,6 @@ function setup(steps: Step[], opts: { onEvent?: (ev: DomainEvent) => void; ackFa
   const statuses: PollerStatus[] = []
   const sleeps: number[] = []
   const fatal: ApiError[] = []
-  // Каждый вызов now() «стоит» 2с — имитирует не мгновенный receive(), чтобы пустой ответ
-  // в тестовых сценариях не попадал под MIN_EMPTY_POLL_MS и не добавлял лишний sleep.
   let clock = 0
   const poller = createPoller({
     receive: async () => {
@@ -86,8 +84,6 @@ describe('poller', () => {
     const events: DomainEvent[] = []
     const acks: number[] = []
     const poller = createPoller({
-      // Имитируем гонку: стоп происходит, пока receive «в полёте», но сам receive успевает
-      // зарезолвиться с реальным уведомлением, а не бросить AbortError.
       receive: async () => {
         stop.abort()
         return n(9, fixtures.incomingText)

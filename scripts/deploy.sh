@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Выкладка статики max-chat.vitovtsev.site: релиз в каталог по sha,
-# атомарная смена симлинка, пять последних релизов.
 set -euo pipefail
 HOST="${DEPLOY_HOST:-deploy@85.198.96.107}"
 HERE="$(cd "$(dirname "$0")" && pwd)"

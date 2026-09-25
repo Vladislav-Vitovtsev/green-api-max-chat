@@ -7,8 +7,6 @@
 @media (max-width: 768px) {
   .layout { grid-template-columns: 1fr; }
   .rail { display: none; }
-  /* Дублируется явным оверрайдом .list { width: 100% } в ChatList.module.css — там он
-     родной для аside, тут работает по совпадению (выше специфичность .layout > aside). */
   .layout > aside { width: 100%; }
   .layout > section { display: none; }
   .chatOpen > aside { display: none; }

@@ -7,7 +7,6 @@ import type { Chat, Message, MessageStatus } from '../core/model'
 
 export type Banner = null | 'notAuthorized' | 'quota' | 'offline'
 export type Connection = 'idle' | 'polling' | 'offline' | 'error'
-// pending: ещё не известно, свободен ли лок активной вкладки (см. core/tabLock).
 export type TabState = 'pending' | 'active' | 'blocked'
 
 export type AppState = MessagesState & {
@@ -20,8 +19,6 @@ export type AppState = MessagesState & {
   banner: Banner
   authError: ApiErrorKind | null
   historyError: Record<string, boolean>
-  // Чей это кэш: idInstance инстанса, под которым данные были сохранены.
-  // Сверяется при логине/restore — чужие данные (другой idInstance) не показываем.
   ownerId: string | null
   tab: TabState
 }
@@ -49,8 +46,6 @@ const memoryStorage = (): StateStorage => {
   return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) }
 }
 
-// Персист переживает перезагрузку страницы и перехват вкладки, а «зависшие» pending-сообщения — нет:
-// раз их статус не подтвердился до выгрузки (или до потери лока) вкладки, дальше он не подтвердится сам.
 function failStalePending(messagesById: Record<string, Message>): Record<string, Message> {
   let changed = false
   const out: Record<string, Message> = {}
@@ -65,10 +60,6 @@ function failStalePending(messagesById: Record<string, Message>): Record<string,
   return changed ? out : messagesById
 }
 
-// Персист пишет только активная вкладка (см. core/tabLock): заблокированная или потерявшая
-// лок вкладка держит в памяти устаревший снимок, и любой её setState затёр бы данные активной.
-// Поэтому запись выключена по умолчанию (в том числе запись {} после migrate на гидратации)
-// и включается только в actions.activate, когда лок получен.
 export function createAppStore(storage?: StateStorage) {
   let writable = false
   let resolved: StateStorage | null = null
