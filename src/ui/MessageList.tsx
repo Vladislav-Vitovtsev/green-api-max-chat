@@ -36,15 +36,22 @@ export function MessageList({ chatId }: { chatId: string }) {
 
   if (order.length === 0) return <div className={styles.emptyMessages}>{texts.chat.noMessages}</div>
 
+  const days: { day: string; ids: string[] }[] = []
+  for (const id of order) {
+    const day = formatDay(byId[id]?.timestamp ?? 0)
+    const last = days[days.length - 1]
+    if (last && last.day === day) last.ids.push(id)
+    else days.push({ day, ids: [id] })
+  }
+
   return (
     <div ref={ref} className={styles.messages} onScroll={onScroll}>
-      {order.map((id, i) => {
-        const day = formatDay(byId[id]?.timestamp ?? 0)
-        const prevId = order[i - 1]
-        const prevDay = prevId ? formatDay(byId[prevId]?.timestamp ?? 0) : ''
-        const capsule = day !== prevDay ? <div key={`d-${id}`} className={styles.capsule}><span>{day}</span></div> : null
-        return [capsule, <MessageBubble key={id} id={id} onRetry={onRetry} />]
-      })}
+      {days.map(({ day, ids }) => (
+        <section key={`d-${day}`} className={styles.day}>
+          <div className={styles.capsule}><span>{day}</span></div>
+          {ids.map((id) => <MessageBubble key={id} id={id} onRetry={onRetry} />)}
+        </section>
+      ))}
     </div>
   )
 }
